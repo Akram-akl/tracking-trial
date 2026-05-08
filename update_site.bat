@@ -19,7 +19,7 @@ git commit -m "%commit_msg%"
 
 echo.
 echo 3. Pushing to GitHub...
-git config credential.https://github.com.username akramakl
+git config credential.https://github.com.username Akram-akl
 git push origin main
 
 echo.
