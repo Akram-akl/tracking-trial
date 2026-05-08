@@ -1,10 +1,25 @@
 // --- Constants ---
 const LEVELS = {
-    'secondary': { name: 'المرحلة الثانوية', emoji: '<i data-lucide="building-2" class="w-6 h-6 inline-block text-blue-500"></i>' },
-    'middle': { name: 'المرحلة المتوسطة', emoji: '<i data-lucide="school" class="w-6 h-6 inline-block text-amber-500"></i>' },
-    'upper_elem': { name: 'الابتدائية العليا', emoji: '<i data-lucide="backpack" class="w-6 h-6 inline-block text-red-500"></i>' },
-    'lower_elem': { name: 'الابتدائية الأولية', emoji: '<i data-lucide="hexagon" class="w-6 h-6 inline-block text-indigo-500"></i>' }
+    'ibn_umar': { name: 'حلقة عبدالله بن عمر', emoji: '<i data-lucide="star" class="w-6 h-6 inline-block text-emerald-500"></i>' },
+    'ijazat': { name: 'حلقة إجازات', emoji: '<i data-lucide="award" class="w-6 h-6 inline-block text-yellow-500"></i>', isAdult: true }
 };
+
+function getLabel(key) {
+    const isAdult = state.currentLevel === 'ijazat';
+    const labels = {
+        'student': isAdult ? 'دارس' : 'طالب',
+        'students': isAdult ? 'دارسين' : 'طلاب',
+        'parent': isAdult ? 'الجوال الشخصي' : 'ولي الأمر',
+        'parent_phone': isAdult ? 'رقم الجوال' : 'رقم ولي الأمر',
+        'student_data': isAdult ? 'بيانات الدارس' : 'بيانات الطالب',
+        'add_student': isAdult ? 'إضافة دارس جديد' : 'إضافة طالب جديد',
+        'edit_student': isAdult ? 'تعديل بيانات الدارس' : 'تعديل بيانات الطالب',
+        'transfer_student': isAdult ? 'نقل الدارس' : 'نقل الطالب',
+        'leaderboard_sub': isAdult ? 'أفضل المتفاعلين أداءً' : 'أفضل الطلاب أداءً'
+    };
+    return labels[key] || key;
+}
+
 
 
 // --- State Management ---
@@ -21,7 +36,10 @@ const state = {
     scores: [],
     darkMode: localStorage.getItem('darkMode') === 'true',
     studentPassword: null, // For student mode authentication persistence
-
+    hideScoresFromStudent: false, // حجب الدرجات الإجمالية عن الطالب
+    transferRequests: [], // طلبات النقل الخاصة بهذه الحلقة
+    enableDirectGrading: true, // تفعيل لوحة المصدرين (الرصد المباشر)
+    disableLeaderboard: false, // الغاء تفعيل لوحة المتصدرين نهائيا
 };
 
 // --- Supabase Realtime Listeners ---
@@ -30,7 +48,7 @@ let competitionsUnsubscribe = null;
 let activeGroupsUnsubscribe = null;
 let scoresUnsubscribe = null;
 let homeStudentsUnsubscribe = null;
-let homeGroupsUnsubscribe = null;
+let transferRequestsUnsubscribe = null;
 
 // --- Global Error Handler for Debugging ---
 window.onerror = function (msg, url, line, col, error) {
@@ -56,7 +74,7 @@ function showToast(msg, type = 'success') {
     if (!toast) return;
 
     // Reset classes - MAXIMUM Z-INDEX to ensure visibility over everything (including modals)
-    toast.className = 'fixed top-20 left-1/2 -translate-x-1/2 px-6 py-3 rounded-full shadow-lg z-[9999] transition-all duration-300 flex items-center gap-3 min-w-[200px] justify-center text-white';
+    toast.className = 'fixed top-20 inset-x-0 mx-auto w-max px-6 py-3 rounded-full shadow-lg z-[9999] transition-all duration-300 flex items-center gap-3 min-w-[200px] justify-center text-white';
 
     if (type === 'error') toast.classList.add('bg-red-600');
     else if (type === 'success') toast.classList.add('bg-green-600');
@@ -163,9 +181,10 @@ function logout() {
     if (studentsUnsubscribe) { studentsUnsubscribe(); studentsUnsubscribe = null; }
     if (competitionsUnsubscribe) { competitionsUnsubscribe(); competitionsUnsubscribe = null; }
     if (activeGroupsUnsubscribe) { activeGroupsUnsubscribe(); activeGroupsUnsubscribe = null; }
+    if (window.levelSettingsUnsubscribe) { window.levelSettingsUnsubscribe(); window.levelSettingsUnsubscribe = null; }
     if (scoresUnsubscribe) { scoresUnsubscribe(); scoresUnsubscribe = null; }
     if (homeStudentsUnsubscribe) { homeStudentsUnsubscribe(); homeStudentsUnsubscribe = null; }
-    if (homeGroupsUnsubscribe) { homeGroupsUnsubscribe(); homeGroupsUnsubscribe = null; }
+    if (transferRequestsUnsubscribe) { transferRequestsUnsubscribe(); transferRequestsUnsubscribe = null; }
 
     state.isTeacher = false;
     state.isParent = false;
@@ -176,6 +195,8 @@ function logout() {
     state.competitions = [];
     state.scores = [];
     state.activeWeekDays = ['sun', 'mon', 'tue', 'wed', 'thu']; // default
+    state.hideScoresFromStudent = false;
+    state.transferRequests = [];
 
     localStorage.removeItem('auth_level');
     localStorage.removeItem('auth_role');
@@ -308,8 +329,10 @@ async function performTeacherLogin() {
                 $('#teacher-password-section').classList.add('hidden');
                 $('#teacher-level-selection').classList.remove('hidden');
                 const container = $('#teacher-level-grid');
-                container.innerHTML = Object.entries(LEVELS).map(([key, config]) => `
-                     <button onclick="finishTeacherLogin('${key}')" class="p-4 bg-teal-50 dark:bg-gray-700 rounded-xl border border-teal-100 dark:border-gray-600 hover:border-teal-500 transition text-center">
+                container.innerHTML = Object.entries(LEVELS)
+                    .filter(([key, config]) => !config.hidden)
+                    .map(([key, config]) => `
+                     <button onclick="finishTeacherLogin('${key}')" class="p-4 bg-emerald-50 dark:bg-gray-700 rounded-xl border border-emerald-100 dark:border-gray-600 hover:border-emerald-600 transition text-center">
                         <div class="text-2xl mb-2">${config.emoji}</div>
                         <div class="text-sm font-bold text-gray-800 dark:text-gray-100">${config.name}</div>
                      </button>
@@ -492,12 +515,23 @@ function updateUIMode() {
         btn.onclick = logout; // Bind logout
         btn.className = "p-2 bg-red-800/80 rounded-full hover:bg-red-600 transition text-white border border-red-500/50";
     } else {
-        label.textContent = `${levelName} - طالب`;
-        label.className = "text-xs text-teal-200 mt-0.5";
+        label.textContent = `${levelName} - ${getLabel('student')}`;
+        label.className = "text-xs text-emerald-300 mt-0.5";
         btn.innerHTML = '<i data-lucide="log-out" class="w-5 h-5"></i>'; // Also logout for student to switch level
         btn.onclick = logout;
-        btn.className = "p-2 bg-teal-800/80 rounded-full hover:bg-teal-600 transition text-white border border-teal-500/50";
+        btn.className = "p-2 bg-emerald-800/80 rounded-full hover:bg-emerald-700 transition text-white border border-emerald-600/50";
     }
+
+    // Toggle Home Nav button visibility for students based on disableLeaderboard
+    const homeNavBtn = document.querySelector('.nav-item[data-target="home"]');
+    if (homeNavBtn) {
+        if (!state.isTeacher && state.disableLeaderboard) {
+            homeNavBtn.style.display = 'none';
+        } else {
+            homeNavBtn.style.display = 'flex';
+        }
+    }
+
 
     refreshAllData();
 }
@@ -515,17 +549,15 @@ const router = {
         competitions: renderCompetitions,
         students: renderStudents,
         settings: renderSettings,
-        parent: renderParentDashboard
+        parent: renderParentDashboard,
+        direct_grading: renderDirectGrading
     },
     cleanup() {
-        // Unsubscribe from all active listeners to prevent memory leaks/lag
+        // Unsubscribe from all active VIEW-SPECIFIC listeners to prevent memory leaks/lag
         if (studentsUnsubscribe) { studentsUnsubscribe(); studentsUnsubscribe = null; }
-        if (competitionsUnsubscribe) { competitionsUnsubscribe(); competitionsUnsubscribe = null; }
-        if (activeGroupsUnsubscribe) { activeGroupsUnsubscribe(); activeGroupsUnsubscribe = null; }
         if (scoresUnsubscribe) { scoresUnsubscribe(); scoresUnsubscribe = null; }
         if (homeStudentsUnsubscribe) { homeStudentsUnsubscribe(); homeStudentsUnsubscribe = null; }
-        if (homeGroupsUnsubscribe) { homeGroupsUnsubscribe(); homeGroupsUnsubscribe = null; }
-        if (window.levelSettingsUnsubscribe) { window.levelSettingsUnsubscribe(); window.levelSettingsUnsubscribe = null; }
+        // Note: Global listeners (competitions, groups, settings) remain active until logout
     },
     // History-aware navigation
     navigate(view) {
@@ -544,17 +576,17 @@ const router = {
         $$('.nav-item').forEach(el => {
             const isActive = el.dataset.target === view;
             if (isActive) {
-                el.classList.add('text-teal-600', 'dark:text-teal-400');
+                el.classList.add('text-emerald-700', 'dark:text-emerald-400');
                 el.classList.remove('text-gray-400');
             } else {
-                el.classList.remove('text-teal-600', 'dark:text-teal-400');
+                el.classList.remove('text-emerald-700', 'dark:text-emerald-400');
                 el.classList.add('text-gray-400');
             }
         });
 
         const container = $('#view-container');
         // Simple loading indicator for better UX
-        container.innerHTML = '<div class="flex justify-center p-8"><i data-lucide="loader-2" class="animate-spin w-8 h-8 text-teal-600"></i></div>';
+        container.innerHTML = '<div class="flex justify-center p-8"><i data-lucide="loader-2" class="animate-spin w-8 h-8 text-emerald-700"></i></div>';
         lucide.createIcons();
 
         // Small delay to allow UI to paint loading state if needed, or just execute
@@ -571,31 +603,45 @@ const router = {
 function renderHome() {
     const container = $('#view-container');
 
+    const _isStudentView = (!state.isTeacher && !state.isParent);
+    const _hideAggregated = state.disableLeaderboard || (state.hideScoresFromStudent && _isStudentView);
+
     container.innerHTML = `
         <div class="space-y-6 animate-fade-in">
-            <div class="bg-gradient-to-br from-teal-500 to-emerald-600 rounded-3xl p-6 text-white shadow-xl relative overflow-hidden">
+            ${!_hideAggregated ? `
+            <div class="bg-gradient-to-br from-emerald-600 to-emerald-600 rounded-3xl p-6 text-white shadow-xl relative overflow-hidden">
                 <div class="absolute -right-10 -top-10 bg-white/10 w-40 h-40 rounded-full blur-2xl"></div>
                 <div class="absolute -left-10 -bottom-10 bg-black/10 w-40 h-40 rounded-full blur-2xl"></div>
                 
                 <div class="relative z-10 text-center">
                     <h2 class="text-2xl font-bold mb-1">لوحة المتصدرين</h2>
-                    <p class="text-teal-100 text-sm">أفضل الطلاب أداءً - ${(LEVELS[state.currentLevel] ? LEVELS[state.currentLevel].name : '')}</p>
+                    <p class="text-emerald-100 text-sm">${getLabel('leaderboard_sub')} - ${(LEVELS[state.currentLevel] ? LEVELS[state.currentLevel].name : '')}</p>
+
                     
                     <div id="top-3-container" class="mt-6 flex justify-center gap-4">
                         <i data-lucide="loader-2" class="w-8 h-8 animate-spin text-white"></i>
                     </div>
                 </div>
             </div>
+            ` : (state.disableLeaderboard ? '' : `
+            <div class="bg-gradient-to-br from-emerald-600 to-emerald-600 rounded-3xl p-6 text-white shadow-xl relative overflow-hidden text-center">
+                <div class="absolute -right-10 -top-10 bg-white/10 w-40 h-40 rounded-full blur-2xl"></div>
+                <i data-lucide="eye-off" class="w-10 h-10 mx-auto mb-2 opacity-70"></i>
+                <h2 class="text-xl font-bold mb-1">${(LEVELS[state.currentLevel] ? LEVELS[state.currentLevel].name : '')}</h2>
+                <p class="text-emerald-200 text-sm">تم حجب الدرجات الإجمالية من قبل المعلم</p>
+            </div>
+            `)}
 
             ${state.isTeacher ? `
             <div class="grid grid-cols-3 gap-3">
-                <button onclick="router.navigate('students')" class="bg-white dark:bg-gray-800 p-3 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 flex flex-col items-center gap-2 hover:border-teal-500 transition">
-                    <div class="bg-teal-100 dark:bg-teal-900/40 p-2.5 rounded-xl text-teal-600 dark:text-teal-400">
+                <button onclick="router.navigate('students')" class="bg-white dark:bg-gray-800 p-3 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 flex flex-col items-center gap-2 hover:border-emerald-600 transition">
+                    <div class="bg-emerald-100 dark:bg-emerald-900/40 p-2.5 rounded-xl text-emerald-700 dark:text-emerald-400">
                         <i data-lucide="user-plus" class="w-5 h-5"></i>
                     </div>
-                    <span class="font-medium text-[11px] sm:text-xs">إدارة الطلاب</span>
+                    <span class="font-medium text-[11px] sm:text-xs">إدارة ال${getLabel('students')}</span>
                 </button>
-                <button onclick="router.navigate('competitions')" class="bg-white dark:bg-gray-800 p-3 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 flex flex-col items-center gap-2 hover:border-teal-500 transition">
+
+                <button onclick="router.navigate('competitions')" class="bg-white dark:bg-gray-800 p-3 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 flex flex-col items-center gap-2 hover:border-emerald-600 transition">
                     <div class="bg-purple-100 dark:bg-purple-900/40 p-2.5 rounded-xl text-purple-600 dark:text-purple-400">
                         <i data-lucide="trophy" class="w-5 h-5"></i>
                     </div>
@@ -610,15 +656,17 @@ function renderHome() {
             </div>
             ` : ''}
 
+            ${!_hideAggregated ? `
             <div class="bg-white dark:bg-gray-800 rounded-2xl p-4 shadow-sm border border-gray-100 dark:border-gray-700">
                 <div class="flex justify-between items-center mb-4">
                     <h3 class="font-bold text-gray-800 dark:text-gray-100">المجموعات المتميزة</h3>
-                    <span class="text-teal-600 text-xs font-bold bg-teal-50 dark:bg-teal-900/30 px-2 py-1 rounded-lg">الأعلى نقاطاً</span>
+                    <span class="text-emerald-700 text-xs font-bold bg-emerald-50 dark:bg-emerald-900/30 px-2 py-1 rounded-lg">الأعلى نقاطاً</span>
                 </div>
                 <div id="top-groups-list" class="space-y-3">
                      <div class="text-center py-4 text-gray-400 text-sm">جاري التحميل...</div>
                 </div>
             </div>
+            ` : ''}
         </div>
     `;
 
@@ -678,7 +726,7 @@ function _doCalculateLeaderboard() {
             if (activeComp) return s.competitionId === activeComp.id;
             return true;
         });
-        const total = myScores.reduce(function (sum, score) { return sum + parseInt(score.points); }, 0);
+        const total = myScores.reduce(function (sum, score) { return sum + parseFloat(score.points); }, 0);
         var sClone = Object.assign({}, student);
         sClone.totalScore = total;
         return sClone;
@@ -710,7 +758,7 @@ function _doCalculateLeaderboard() {
                 var gs = d.data();
                 if (activeComp && gs.competitionId !== activeComp.id) return;
                 if (!groupBonusMap[gs.groupId]) groupBonusMap[gs.groupId] = 0;
-                groupBonusMap[gs.groupId] += (parseInt(gs.points) || 0);
+                groupBonusMap[gs.groupId] += (parseFloat(gs.points) || 0);
             });
 
             const groupTotals = validGroups.map(function (group) {
@@ -811,7 +859,7 @@ function updateTopGroupsUI(groups) {
                 <h4 class="font-bold text-sm text-gray-800 dark:text-gray-100">${g.name}</h4>
                 <p class="text-xs text-gray-500">مجموع النقاط: ${g.totalScore}</p>
             </div>
-            <span class="font-bold text-teal-600 text-lg">#${i + 1}</span>
+            <span class="font-bold text-emerald-700 text-lg">#${i + 1}</span>
         </div>
     `}).join('');
 }
@@ -823,7 +871,7 @@ function renderCompetitions() {
             <div class="flex justify-between items-center mb-2">
                 <h2 class="text-xl font-bold">المسابقات - ${(LEVELS[state.currentLevel] ? LEVELS[state.currentLevel].name : '')}</h2>
                 ${state.isTeacher ? `
-                <button onclick="openAddCompetitionModal()" class="bg-teal-600 text-white px-4 py-2 rounded-xl text-sm font-bold shadow-lg hover:bg-teal-700 transition flex items-center gap-2">
+                <button onclick="openAddCompetitionModal()" class="bg-emerald-700 text-white px-4 py-2 rounded-xl text-sm font-bold shadow-lg hover:bg-emerald-800 transition flex items-center gap-2">
                     <i data-lucide="plus" class="w-4 h-4"></i>
                     جديد
                 </button>
@@ -832,7 +880,7 @@ function renderCompetitions() {
             
             <div id="competitions-list" class="space-y-4 min-h-[100px] relative">
                 <div class="bg-white dark:bg-gray-800 rounded-2xl p-8 py-12 text-center border-2 border-dashed border-gray-200 dark:border-gray-700">
-                    <i data-lucide="loader-2" class="w-8 h-8 text-teal-600 animate-spin mx-auto mb-2"></i>
+                    <i data-lucide="loader-2" class="w-8 h-8 text-emerald-700 animate-spin mx-auto mb-2"></i>
                     <p class="text-gray-500 text-sm">جاري التحميل...</p>
                 </div>
             </div>
@@ -843,35 +891,8 @@ function renderCompetitions() {
     // Ensure modals are in body
     ensureGlobalModals();
 
-    // Supabase Listener
-    if (competitionsUnsubscribe) {
-        competitionsUnsubscribe();
-        competitionsUnsubscribe = null;
-    }
-
-    const q = window.firebaseOps.query(
-        window.firebaseOps.collection(window.db, "competitions")
-    );
-
-    competitionsUnsubscribe = window.firebaseOps.onSnapshot(q, function (snapshot) {
-        const comps = [];
-        snapshot.forEach(function (doc) {
-            var data = doc.data();
-            data.id = doc.id;
-            // Filter by level or 'general' (documents without level field)
-            if (!data.level || data.level === state.currentLevel) {
-                comps.push(data);
-            }
-        });
-        // Client-side Sort (Supabase returns ISO strings)
-        comps.sort(function (a, b) {
-            const aTime = a.createdAt ? new Date(a.createdAt).getTime() : 0;
-            const bTime = b.createdAt ? new Date(b.createdAt).getTime() : 0;
-            return bTime - aTime;
-        });
-        state.competitions = comps;
-        updateCompetitionsListUI();
-    });
+    // The data is already kept up-to-date by startGlobalDataSync(), so we just render it:
+    updateCompetitionsListUI();
     lucide.createIcons();
 }
 
@@ -891,9 +912,9 @@ function updateCompetitionsListUI() {
         `;
     } else {
         list.innerHTML = state.competitions.map(comp => `
-            <div class="bg-white dark:bg-gray-800 rounded-2xl shadow-sm p-4 hover:shadow-md transition border border-transparent hover:border-teal-100 dark:hover:border-teal-900">
+            <div class="bg-white dark:bg-gray-800 rounded-2xl shadow-sm p-4 hover:shadow-md transition border border-transparent hover:border-emerald-100 dark:hover:border-emerald-900">
                 <div class="flex items-center gap-4 mb-3">
-                    <div class="w-12 h-12 bg-teal-50 dark:bg-teal-900/20 rounded-xl flex items-center justify-center text-2xl">
+                    <div class="w-12 h-12 bg-emerald-50 dark:bg-emerald-900/20 rounded-xl flex items-center justify-center text-2xl">
                         ${comp.icon || '🏆'}
                     </div>
                     <div>
@@ -905,7 +926,7 @@ function updateCompetitionsListUI() {
                     <button onclick="toggleCompetitionActive('${comp.id}')" class="p-2 rounded-lg transition ${comp.active ? 'text-yellow-500 bg-yellow-50' : 'text-gray-300 hover:text-yellow-500 hover:bg-yellow-50'}" title="${comp.active ? 'نشطة (تظهر للطلاب)' : 'تفعيل للعرض'}">
                         <i data-lucide="star" class="w-4 h-4 ${comp.active ? 'fill-yellow-500' : ''}"></i>
                     </button>
-                    <button onclick="openEditCompetition('${comp.id}')" class="p-2 text-teal-600 hover:bg-teal-50 rounded-lg transition" title="تعديل">
+                    <button onclick="openEditCompetition('${comp.id}')" class="p-2 text-emerald-700 hover:bg-emerald-50 rounded-lg transition" title="تعديل">
                         <i data-lucide="edit-2" class="w-4 h-4"></i>
                     </button>
                     <button onclick="resetCompetition('${comp.id}')" class="p-2 text-orange-500 hover:bg-orange-50 rounded-lg transition" title="تصفير الدرجات">
@@ -920,7 +941,7 @@ function updateCompetitionsListUI() {
                 
                 <div class="grid grid-cols-2 gap-2 mt-4">
                     ${state.isTeacher ? `
-                    <button onclick="openGradingSession('${comp.id}')" class="bg-teal-600 text-white py-2 rounded-xl text-sm font-bold hover:bg-teal-700 transition flex items-center justify-center gap-2">
+                    <button onclick="openGradingSession('${comp.id}')" class="bg-emerald-700 text-white py-2 rounded-xl text-sm font-bold hover:bg-emerald-800 transition flex items-center justify-center gap-2">
                         <i data-lucide="star" class="w-4 h-4"></i>
                         رصد درجات
                     </button>
@@ -948,7 +969,7 @@ function renderStudents() {
                     window._currentStudentRecord.id = docSnap.id;
                     openStudentReport(window._currentLoggedInStudentId);
                 } else {
-                    container.innerHTML = '<p class="text-center p-8">خطأ: لم يتم العثور على الطالب</p>';
+                    container.innerHTML = `<p class="text-center p-8">خطأ: لم يتم العثور على ${getLabel('student')}</p>`;
                 }
             });
         return;
@@ -956,28 +977,38 @@ function renderStudents() {
 
     container.innerHTML = `
         <div class="space-y-4 animate-fade-in">
-            <div class="flex justify-between items-center mb-2">
-                <h2 class="text-xl font-bold">الطلاب - ${(LEVELS[state.currentLevel] ? LEVELS[state.currentLevel].name : '')}</h2>
+            <div class="flex justify-between items-center mb-2 gap-2">
+                <h2 class="text-xl font-bold">ال${getLabel('students')} - ${(LEVELS[state.currentLevel] ? LEVELS[state.currentLevel].name : '')}</h2>
+
                 ${state.isTeacher ? `
-                <button onclick="openAddStudentModal()" class="bg-teal-600 text-white px-4 py-2 rounded-xl text-sm font-bold shadow-lg hover:bg-teal-700 transition flex items-center gap-2">
-                    <i data-lucide="user-plus" class="w-4 h-4"></i>
-                    جديد
-                </button>
+                <div class="flex gap-2 shrink-0">
+                    <button onclick="openRegistrationLinkModal()" class="bg-gray-100 dark:bg-gray-700 text-emerald-700 dark:text-emerald-300 px-3 py-2 rounded-xl text-sm font-bold shadow-sm hover:bg-gray-200 dark:hover:bg-gray-600 transition flex items-center gap-1 border border-gray-200 dark:border-gray-600" title="نسخ رابط التسجيل لل${getLabel('students')}">
+                        <i data-lucide="link" class="w-4 h-4"></i>
+                        رابط
+                    </button>
+                    <button onclick="openAddStudentModal()" class="bg-emerald-700 text-white px-4 py-2 rounded-xl text-sm font-bold shadow-lg hover:bg-emerald-800 transition flex items-center gap-2">
+                        <i data-lucide="user-plus" class="w-4 h-4"></i>
+                        جديد
+                    </button>
+                </div>
                 ` : ''}
             </div>
+
+            <!-- Transfer Requests Container -->
+            <div id="transfer-requests-container" class="space-y-2 mb-4"></div>
 
             <!-- Search Bar -->
             <div class="relative mb-2">
                 <i data-lucide="search" class="w-4 h-4 text-gray-400 absolute right-3 top-1/2 -translate-y-1/2"></i>
                 <input type="text" id="student-search-input" oninput="filterStudents(this.value)" 
-                    class="w-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl pr-10 pl-4 py-2.5 text-sm focus:outline-none focus:border-teal-500 transition" 
+                    class="w-full bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl pr-10 pl-4 py-2.5 text-sm focus:outline-none focus:border-emerald-600 transition" 
                     placeholder="بحث بالاسم أو رقم الجوال...">
             </div>
 
             <div id="students-list" class="bg-white dark:bg-gray-800 rounded-2xl shadow-sm divide-y divide-gray-100 dark:divide-gray-700 overflow-hidden min-h-[100px] relative">
                 <div class="flex flex-col items-center justify-center py-8 text-gray-400">
                      <i data-lucide="loader-2" class="w-6 h-6 animate-spin mb-2"></i>
-                     <p class="text-xs">جاري جلب الطلاب...</p>
+                     <p class="text-xs">جاري جلب ${getLabel('students')}...</p>
                 </div>
             </div>
         </div>
@@ -991,6 +1022,7 @@ function renderStudents() {
     if (state.students && state.students.length > 0) {
         updateStudentsListUI();
     }
+    updateTransferRequestsUI();
 
     // Listener
     if (studentsUnsubscribe) {
@@ -1020,7 +1052,143 @@ function renderStudents() {
         state.students = students;
         updateStudentsListUI();
     });
+}
+
+function updateTransferRequestsUI() {
+    const container = $('#transfer-requests-container');
+    if (!container) return;
+
+    if (!state.transferRequests || state.transferRequests.length === 0) {
+        container.innerHTML = '';
+        return;
+    }
+
+    let html = '';
+    state.transferRequests.forEach(req => {
+        // As Receiving Teacher (Pending Requests)
+        if (req.toLevel === state.currentLevel && req.status === 'pending') {
+            const fromLevelName = LEVELS[req.fromLevel] ? LEVELS[req.fromLevel].name : req.fromLevel;
+            // Fetch student name from global db since it's not in our state
+            html += `
+                <div class="bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-800 rounded-xl p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-sm animate-fade-in" id="req-${req.id}">
+                    <div class="flex items-start gap-3">
+                        <div class="bg-blue-100 dark:bg-blue-800 p-2 rounded-lg text-blue-600 dark:text-blue-300">
+                            <i data-lucide="arrow-right-left" class="w-5 h-5"></i>
+                        </div>
+                        <div>
+                            <p class="text-sm font-bold text-blue-800 dark:text-blue-200">طلب نقل ${getLabel('student')} إليكم</p>
+                            <p class="text-xs text-blue-600 dark:text-blue-400">يود معلم ${fromLevelName} نقل ${getLabel('student')} إلى حلقتكم.</p>
+                            <div class="mt-1 text-xs font-medium text-gray-500" id="req-student-name-${req.id}">جاري جلب اسم ${getLabel('student')}...</div>
+                            ${req.deleteOldData ? '<p class="text-[10px] text-red-500 font-bold mt-1">⚠️ سيتم حذف درجات الطالب القديمة عند القبول</p>' : ''}
+                        </div>
+                    </div>
+                    <div class="flex gap-2">
+                        <button onclick="acceptTransferRequest('${req.id}', '${req.studentId}', '${req.deleteOldData}', '${req.fromLevel}')" class="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-lg shadow transition">قبول</button>
+                        <button onclick="rejectTransferRequest('${req.id}')" class="px-3 py-1.5 bg-gray-200 hover:bg-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 text-gray-800 dark:text-gray-200 text-xs font-bold rounded-lg transition">رفض</button>
+                    </div>
+                </div>
+            `;
+            // Fetch student name async
+            window.firebaseOps.getDoc(window.firebaseOps.doc(window.db, "students", req.studentId))
+                .then(snap => {
+                    const el = document.getElementById(`req-student-name-${req.id}`);
+                    if (el && snap.exists()) el.innerText = `${getLabel('student')}: ` + snap.data().name;
+                });
+        }
+        
+        // As Originating Teacher (Rejected Notifications)
+        if (req.fromLevel === state.currentLevel && req.status === 'rejected') {
+            const toLevelName = LEVELS[req.toLevel] ? LEVELS[req.toLevel].name : req.toLevel;
+            html += `
+                <div class="bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-800 rounded-xl p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-sm animate-fade-in">
+                    <div class="flex items-start gap-3">
+                        <div class="bg-red-100 dark:bg-red-800 p-2 rounded-lg text-red-600 dark:text-red-300">
+                            <i data-lucide="x-circle" class="w-5 h-5"></i>
+                        </div>
+                        <div>
+                            <p class="text-sm font-bold text-red-800 dark:text-red-200">تم رفض النقل</p>
+                            <p class="text-xs text-red-600 dark:text-red-400">رفض معلم ${toLevelName} استلام ${getLabel('student')}، وتم إبقاؤه في حلقتكم.</p>
+                        </div>
+                    </div>
+                    <button onclick="dismissRejectedRequest('${req.id}')" class="px-3 py-1.5 bg-red-100 hover:bg-red-200 text-red-700 text-xs font-bold rounded-lg transition">إخفاء</button>
+                </div>
+            `;
+        }
+    });
+
+    container.innerHTML = html;
     lucide.createIcons();
+}
+
+async function acceptTransferRequest(requestId, studentId, deleteOldDataStr, fromLevel) {
+    if (!confirm(`هل أنت متأكد من قبول ${getLabel('student')} في حلقتكم؟`)) return;
+    const deleteOldData = (deleteOldDataStr === 'true');
+    
+    try {
+        // 1. Update student level
+        await window.firebaseOps.updateDoc(window.firebaseOps.doc(window.db, "students", studentId), {
+            level: state.currentLevel,
+            updatedAt: new Date().toISOString()
+        });
+
+        // 2. Remove student from old groups
+        const groupsQ = window.firebaseOps.query(
+            window.firebaseOps.collection(window.db, "groups"),
+            window.firebaseOps.where("level", "==", fromLevel)
+        );
+        const groupsSnap = await window.firebaseOps.getDocs(groupsQ);
+        for (const doc of groupsSnap.docs) {
+            const gData = doc.data();
+            if (gData.members && gData.members.includes(studentId)) {
+                const newMembers = gData.members.filter(m => m !== studentId);
+                await window.firebaseOps.updateDoc(window.firebaseOps.doc(window.db, "groups", doc.id), { members: newMembers });
+            }
+        }
+
+        // 3. Delete old data if requested
+        if (deleteOldData) {
+            const scoresQ = window.firebaseOps.query(window.firebaseOps.collection(window.db, "scores"), window.firebaseOps.where("studentId", "==", studentId));
+            const scoresSnap = await window.firebaseOps.getDocs(scoresQ);
+            for (const sDoc of scoresSnap.docs) {
+                await window.firebaseOps.deleteDoc(window.firebaseOps.doc(window.db, "scores", sDoc.id));
+            }
+
+            const planRecordsQ = window.firebaseOps.query(window.firebaseOps.collection(window.db, "plan_daily_records"), window.firebaseOps.where("student_id", "==", studentId));
+            const planRecordsSnap = await window.firebaseOps.getDocs(planRecordsQ);
+            for (const pDoc of planRecordsSnap.docs) {
+                await window.firebaseOps.deleteDoc(window.firebaseOps.doc(window.db, "plan_daily_records", pDoc.id));
+            }
+        }
+
+        // 4. Delete the request
+        await window.firebaseOps.deleteDoc(window.firebaseOps.doc(window.db, "transfer_requests", requestId));
+        
+        showToast(`تم قبول ونقل ${getLabel('student')} لحلقتكم بنجاح ✅`);
+    } catch (e) {
+        console.error("Error accepting transfer:", e);
+        showToast(`حدث خطأ أثناء نقل ${getLabel('student')}`, "error");
+    }
+}
+
+async function rejectTransferRequest(requestId) {
+    if (!confirm(`هل أنت متأكد من رفض استلام ${getLabel('student')}؟`)) return;
+    try {
+        await window.firebaseOps.updateDoc(window.firebaseOps.doc(window.db, "transfer_requests", requestId), {
+            status: 'rejected',
+            updatedAt: new Date().toISOString()
+        });
+        showToast("تم رفض الطلب");
+    } catch(e) {
+        showToast("حدث خطأ", "error");
+    }
+}
+
+async function dismissRejectedRequest(requestId) {
+    try {
+        await window.firebaseOps.deleteDoc(window.firebaseOps.doc(window.db, "transfer_requests", requestId));
+    } catch(e) {
+        console.error(e);
+    }
 }
 
 function updateStudentsListUI() {
@@ -1031,8 +1199,8 @@ function updateStudentsListUI() {
         list.innerHTML = `
             <div class="flex flex-col items-center justify-center py-12 text-gray-400">
                 <i data-lucide="users" class="w-12 h-12 mb-3 opacity-20"></i>
-                <p class="text-sm font-medium">لا يوجد طلاب حتى الآن</p>
-                ${state.isTeacher ? '<p class="text-xs mt-1">اضغط على "جديد" لإضافة طلاب</p>' : ''}
+                <p class="text-sm font-medium">لا يوجد ${getLabel('students')} حتى الآن</p>
+                ${state.isTeacher ? `<p class="text-xs mt-1">اضغط على "جديد" لإضافة ${getLabel('students')}</p>` : ''}
             </div>
         `;
     } else {
@@ -1055,7 +1223,7 @@ function updateStudentsListUI() {
                     </div>
                 </div>
                 <div class="flex gap-1 shrink-0">
-                    <button onclick="event.stopPropagation(); openEditStudent('${student.id}')" class="p-2 text-gray-400 hover:text-teal-600 hover:bg-teal-50 dark:hover:bg-teal-900/20 rounded-lg transition" title="تعديل">
+                    <button onclick="event.stopPropagation(); openEditStudent('${student.id}')" class="p-2 text-gray-400 hover:text-emerald-700 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 rounded-lg transition" title="تعديل">
                         <i data-lucide="edit-2" class="w-4 h-4"></i>
                     </button>
                     ${state.isTeacher ? `
@@ -1084,10 +1252,10 @@ function openTransferStudent(studentId) {
     select.innerHTML = '<option value="">-- اختر المرحلة --</option>';
 
     Object.entries(LEVELS).forEach(([key, val]) => {
-        if (key !== state.currentLevel) {
+        if (key !== state.currentLevel && !val.hidden) {
             const option = document.createElement('option');
             option.value = key;
-            option.textContent = `${val.emoji} ${val.name}`;
+            option.textContent = val.name;
             select.appendChild(option);
         }
     });
@@ -1111,7 +1279,7 @@ async function confirmTransferStudent() {
             window.firebaseOps.doc(window.db, "students", studentId),
             { level: targetLevel, updatedAt: new Date() }
         );
-        showToast(`تم نقل الطالب إلى ${LEVELS[targetLevel].name}`);
+        showToast(`تم نقل ${getLabel('student')} إلى ${LEVELS[targetLevel].name}`);
         closeModal('transfer-modal');
     } catch (e) {
         console.error(e);
@@ -1129,7 +1297,7 @@ function renderSettings() {
              <!-- Teacher Contact Info -->
              <div class="bg-white dark:bg-gray-800 rounded-2xl p-4 shadow-sm border">
                  <h3 class="font-bold mb-4 flex items-center gap-2"><i data-lucide="users" class="w-5 h-5 text-purple-600"></i> المعلمون</h3>
-                 <p class="text-xs text-gray-500 mb-3">هذه البيانات ستظهر لولي الأمر للتواصل</p>
+                 <p class="text-xs text-gray-500 mb-3">${state.currentLevel === 'ijazat' ? 'بيانات التواصل للدارسين' : 'هذه البيانات ستظهر لولي الأمر للتواصل'}</p>
                  
                  <!-- Teachers List -->
                  <div id="teachers-list" class="space-y-2 mb-4">
@@ -1170,8 +1338,8 @@ function renderSettings() {
                          </div>
                          <span class="font-medium">الوضع الليلي</span>
                      </div>
-                     <button onclick="toggleTheme()" class="w-12 h-7 ${state.darkMode ? 'bg-teal-600' : 'bg-gray-200'} rounded-full relative transition-colors duration-300">
-                         <div class="w-5 h-5 bg-white rounded-full absolute top-1 ${state.darkMode ? 'left-6' : 'left-1'} transition-all duration-300 shadow-sm"></div>
+                     <button onclick="toggleTheme()" class="w-12 h-7 bg-gray-200 dark:bg-emerald-700 rounded-full relative transition-colors duration-300">
+                         <div class="w-5 h-5 bg-white rounded-full absolute top-1 left-1 dark:translate-x-5 transition-transform duration-300 shadow-sm"></div>
                      </button>
                  </div>
              </div>
@@ -1184,7 +1352,7 @@ function renderSettings() {
              ${state.isTeacher ? `
              <!-- Export & Tools -->
              <div class="bg-white dark:bg-gray-800 rounded-2xl p-4 shadow-sm border">
-                 <h3 class="font-bold mb-3 flex items-center gap-2"><i data-lucide="wrench" class="w-5 h-5 text-teal-600"></i> أدوات</h3>
+                 <h3 class="font-bold mb-3 flex items-center gap-2"><i data-lucide="wrench" class="w-5 h-5 text-emerald-700"></i> أدوات</h3>
                  <div class="grid grid-cols-2 gap-3">
                      <button onclick="openReportsModal()" class="col-span-2 flex items-center justify-center gap-2 p-3 bg-red-50 dark:bg-red-900/20 rounded-xl border border-red-100 dark:border-red-800 hover:bg-red-100 transition">
                          <i data-lucide="file-text" class="w-5 h-5 text-red-600"></i>
@@ -1194,9 +1362,9 @@ function renderSettings() {
                          <i data-lucide="message-circle" class="w-5 h-5 text-emerald-600"></i>
                          <span class="text-xs font-bold text-emerald-700 dark:text-emerald-400">واتساب مجمع</span>
                      </button>
-                     <button onclick="exportStudentsXLSX()" class="flex items-center justify-center gap-2 p-3 bg-blue-50 dark:bg-blue-900/20 rounded-xl border border-blue-100 dark:border-blue-800 hover:bg-blue-100 transition">
-                         <i data-lucide="file-spreadsheet" class="w-5 h-5 text-blue-600"></i>
-                         <span class="text-xs font-bold text-blue-700 dark:text-blue-400">تصدير الطلاب</span>
+                     <button onclick="exportStudentsXLSX()" class="flex items-center justify-center gap-2 p-3 bg-emerald-50 dark:bg-emerald-900/20 rounded-xl border border-emerald-100 dark:border-emerald-800 hover:bg-emerald-100 transition">
+                         <i data-lucide="file-spreadsheet" class="w-5 h-5 text-emerald-600"></i>
+                         <span class="text-xs font-bold text-emerald-700 dark:text-emerald-400">تصدير الطلاب</span>
                      </button>
                      <button onclick="openExportScoresModal()" class="flex items-center justify-center gap-2 p-3 bg-purple-50 dark:bg-purple-900/20 rounded-xl border border-purple-100 dark:border-purple-800 hover:bg-purple-100 transition">
                          <i data-lucide="file-spreadsheet" class="w-5 h-5 text-purple-600"></i>
@@ -1209,7 +1377,7 @@ function renderSettings() {
              ${state.isTeacher ? `
              <!-- Week Days Scheduling per Level -->
              <div class="bg-white dark:bg-gray-800 rounded-2xl p-4 shadow-sm border">
-                 <h3 class="font-bold mb-3 flex items-center gap-2"><i data-lucide="calendar-days" class="w-5 h-5 text-indigo-600"></i> جدولة أيام الأسبوع</h3>
+                 <h3 class="font-bold mb-3 flex items-center gap-2"><i data-lucide="calendar-days" class="w-5 h-5 text-emerald-600"></i> جدولة أيام الأسبوع</h3>
                  <p class="text-xs text-gray-500 mb-4">اختر الأيام التي ينعقد فيها النشاط لهذه المرحلة</p>
                  <div id="week-days-selector" class="grid grid-cols-7 gap-2 mb-4">
                      <button type="button" onclick="toggleWeekDay('sun')" id="day-sun" class="py-2 rounded-xl text-xs font-bold border-2 text-center transition">أحد</button>
@@ -1220,9 +1388,63 @@ function renderSettings() {
                      <button type="button" onclick="toggleWeekDay('fri')" id="day-fri" class="py-2 rounded-xl text-xs font-bold border-2 text-center transition">جمعة</button>
                      <button type="button" onclick="toggleWeekDay('sat')" id="day-sat" class="py-2 rounded-xl text-xs font-bold border-2 text-center transition">سبت</button>
                  </div>
-                 <button onclick="saveWeekDays()" class="w-full py-2 bg-indigo-600 text-white font-bold rounded-xl hover:bg-indigo-700 transition flex items-center justify-center gap-2">
+                 <button onclick="saveWeekDays()" class="w-full py-2 bg-emerald-600 text-white font-bold rounded-xl hover:bg-emerald-700 transition flex items-center justify-center gap-2">
                      <i data-lucide="save" class="w-4 h-4"></i> حفظ الجدولة
                  </button>
+             </div>
+
+             <!-- Hide Scores from Students -->
+             <div class="bg-white dark:bg-gray-800 rounded-2xl p-4 shadow-sm border">
+                 <div class="flex items-center justify-between">
+                     <div class="flex items-center gap-3">
+                         <div class="bg-red-100 dark:bg-red-900/30 p-2 rounded-lg">
+                             <i data-lucide="eye-off" class="w-5 h-5 text-red-600 dark:text-red-400"></i>
+                         </div>
+                         <div>
+                             <span class="font-medium">حجب الدرجات الإجمالية</span>
+                             <p class="text-[10px] text-gray-500">إخفاء لوحة المتصدرين والترتيب والمجموعات المتميزة عن الطالب</p>
+                         </div>
+                     </div>
+                     <button id="hide-scores-toggle" onclick="toggleHideScoresFromStudent()" class="w-12 h-7 ${state.hideScoresFromStudent ? 'bg-red-600' : 'bg-gray-200 dark:bg-gray-600'} rounded-full relative transition-colors duration-300">
+                         <div class="w-5 h-5 bg-white rounded-full absolute top-1 ${state.hideScoresFromStudent ? 'right-1' : 'left-1'} transition-all duration-300 shadow-sm"></div>
+                     </button>
+                 </div>
+             </div>
+
+             <!-- Disable Leaderboard -->
+             <div class="bg-white dark:bg-gray-800 rounded-2xl p-4 shadow-sm border mt-4">
+                 <div class="flex items-center justify-between">
+                     <div class="flex items-center gap-3">
+                         <div class="bg-orange-100 dark:bg-orange-900/30 p-2 rounded-lg">
+                             <i data-lucide="trophy" class="w-5 h-5 text-orange-600 dark:text-orange-400"></i>
+                         </div>
+                         <div>
+                             <span class="font-medium">إلغاء تفعيل لوحة المتصدرين</span>
+                             <p class="text-[10px] text-gray-500">إخفاء لوحة المتصدرين من الشاشة الرئيسية نهائياً</p>
+                         </div>
+                     </div>
+                     <button id="disable-leaderboard-toggle" onclick="toggleDisableLeaderboard()" class="w-12 h-7 ${state.disableLeaderboard ? 'bg-orange-600' : 'bg-gray-200 dark:bg-gray-600'} rounded-full relative transition-colors duration-300">
+                         <div class="w-5 h-5 bg-white rounded-full absolute top-1 ${state.disableLeaderboard ? 'left-6' : 'left-1'} transition-transform duration-300 shadow-sm"></div>
+                     </button>
+                 </div>
+             </div>
+
+             <!-- Enable Direct Grading Board -->
+             <div class="bg-white dark:bg-gray-800 rounded-2xl p-4 shadow-sm border mt-4">
+                 <div class="flex items-center justify-between">
+                     <div class="flex items-center gap-3">
+                         <div class="bg-emerald-100 dark:bg-emerald-900/30 p-2 rounded-lg">
+                             <i data-lucide="activity" class="w-5 h-5 text-emerald-600 dark:text-emerald-400"></i>
+                         </div>
+                         <div>
+                             <span class="font-medium">تفعيل الرصد المباشر</span>
+                             <p class="text-[10px] text-gray-500">إتاحة الرصد المباشر (غياب، حفظ، مراجعة، ملاحظات، نقل) للحلقة</p>
+                         </div>
+                     </div>
+                     <button id="direct-grading-toggle" onclick="toggleEnableDirectGrading()" class="w-12 h-7 ${state.enableDirectGrading ? 'bg-emerald-600' : 'bg-gray-200 dark:bg-gray-600'} rounded-full relative transition-colors duration-300">
+                         <div class="w-5 h-5 bg-white rounded-full absolute top-1 ${state.enableDirectGrading ? 'left-1' : 'right-1'} transition-all duration-300 shadow-sm"></div>
+                     </button>
+                 </div>
              </div>
              ` : ''}
 
@@ -1244,7 +1466,7 @@ function renderSettings() {
              </div>
 
              <div class="text-center text-xs text-gray-400 mt-8 mb-4">
-                 <p>مسابقات ابن تيمية - إصدار v4.4.0</p>
+                 <p>برنامج المتابعة - النسخة التجريبية - إصدار v4.4.0</p>
                  <p class="opacity-50 mt-1 font-light">تم إنشاء هذا التطبيق بواسطة أكرم عقل</p>
              </div>
         </div>
@@ -1457,7 +1679,7 @@ function updateWeekDayButtons() {
         const btn = document.getElementById(`day-${d}`);
         if (!btn) return;
         if (selectedWeekDays.includes(d)) {
-            btn.className = 'py-2 rounded-xl text-xs font-bold border-2 text-center transition border-indigo-500 bg-indigo-100 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300';
+            btn.className = 'py-2 rounded-xl text-xs font-bold border-2 text-center transition border-emerald-500 bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300';
         } else {
             btn.className = 'py-2 rounded-xl text-xs font-bold border-2 text-center transition border-gray-200 dark:border-gray-600 bg-gray-50 dark:bg-gray-700 text-gray-500';
         }
@@ -1520,6 +1742,177 @@ async function saveWeekDays() {
     }
 }
 
+// Toggle Hide Scores from Students
+async function toggleHideScoresFromStudent() {
+    if (!state.currentLevel) return;
+
+    const newValue = !state.hideScoresFromStudent;
+
+    try {
+        const q = window.firebaseOps.query(
+            window.firebaseOps.collection(window.db, "level_settings"),
+            window.firebaseOps.where("level", "==", state.currentLevel)
+        );
+        const snap = await window.firebaseOps.getDocs(q);
+
+        let existingDocId = null;
+        if (!snap.empty) {
+            snap.forEach(doc => {
+                const data = doc.data();
+                if (data.featureName === 'hide_scores') {
+                    existingDocId = doc.id;
+                }
+            });
+        }
+
+        const data = {
+            level: state.currentLevel,
+            featureName: 'hide_scores',
+            isEnabled: newValue,
+            settings: { hideScores: newValue },
+            updatedAt: new Date().toISOString()
+        };
+
+        if (existingDocId) {
+            await window.firebaseOps.updateDoc(window.firebaseOps.doc(window.db, "level_settings", existingDocId), data);
+        } else {
+            await window.firebaseOps.addDoc(window.firebaseOps.collection(window.db, "level_settings"), data);
+        }
+
+        state.hideScoresFromStudent = newValue;
+        showToast(newValue ? `تم حجب الدرجات الإجمالية عن ال${getLabel('student')} 🔒` : `تم إظهار الدرجات الإجمالية لل${getLabel('student')} 🔓`);
+
+
+        // Update toggle UI
+        const toggleBtn = document.getElementById('hide-scores-toggle');
+        if (toggleBtn) {
+            toggleBtn.className = `w-12 h-7 ${newValue ? 'bg-red-600' : 'bg-gray-200 dark:bg-gray-600'} rounded-full relative transition-colors duration-300`;
+            toggleBtn.innerHTML = `<div class="w-5 h-5 bg-white rounded-full absolute top-1 ${newValue ? 'right-1' : 'left-1'} transition-all duration-300 shadow-sm"></div>`;
+        }
+    } catch (e) {
+        console.error("Error toggling hide scores:", e);
+        showToast("خطأ في حفظ الإعداد", "error");
+    }
+}
+
+// Toggle Disable Leaderboard Completely
+async function toggleDisableLeaderboard() {
+    if (!state.currentLevel) return;
+
+    const newValue = !state.disableLeaderboard;
+
+    try {
+        const q = window.firebaseOps.query(
+            window.firebaseOps.collection(window.db, "level_settings"),
+            window.firebaseOps.where("level", "==", state.currentLevel)
+        );
+        const snap = await window.firebaseOps.getDocs(q);
+
+        let existingDocId = null;
+        if (!snap.empty) {
+            snap.forEach(doc => {
+                const data = doc.data();
+                if (data.featureName === 'disable_leaderboard') {
+                    existingDocId = doc.id;
+                }
+            });
+        }
+
+        const data = {
+            level: state.currentLevel,
+            featureName: 'disable_leaderboard',
+            isEnabled: newValue,
+            settings: { disable: newValue },
+            updatedAt: new Date().toISOString()
+        };
+
+        if (existingDocId) {
+            await window.firebaseOps.updateDoc(window.firebaseOps.doc(window.db, "level_settings", existingDocId), data);
+        } else {
+            await window.firebaseOps.addDoc(window.firebaseOps.collection(window.db, "level_settings"), data);
+        }
+
+        state.disableLeaderboard = newValue;
+        showToast(newValue ? "تم إلغاء تفعيل لوحة المتصدرين" : "تم تفعيل لوحة المتصدرين");
+
+        // Update toggle UI
+        const toggleBtn = document.getElementById('disable-leaderboard-toggle');
+        if (!toggleBtn) return;
+        
+        const toggleDot = toggleBtn.querySelector('div');
+        if (newValue) {
+            toggleBtn.classList.remove('bg-gray-200', 'dark:bg-gray-600');
+            toggleBtn.classList.add('bg-orange-600');
+            toggleDot.classList.remove('left-1');
+            toggleDot.classList.add('left-6');
+        } else {
+            toggleBtn.classList.remove('bg-orange-600');
+            toggleBtn.classList.add('bg-gray-200', 'dark:bg-gray-600');
+            toggleDot.classList.remove('left-6');
+            toggleDot.classList.add('left-1');
+        }
+        
+        if (state.currentView === 'home') renderHome();
+    } catch (e) {
+        console.error("Error toggling disable leaderboard:", e);
+        showToast("خطأ في التحديث", "error");
+    }
+}
+
+// Toggle Enable Direct Grading
+async function toggleEnableDirectGrading() {
+    if (!state.currentLevel) return;
+
+    const newValue = !state.enableDirectGrading;
+
+    try {
+        const q = window.firebaseOps.query(
+            window.firebaseOps.collection(window.db, "level_settings"),
+            window.firebaseOps.where("level", "==", state.currentLevel)
+        );
+        const snap = await window.firebaseOps.getDocs(q);
+
+        let existingDocId = null;
+        if (!snap.empty) {
+            snap.forEach(doc => {
+                const data = doc.data();
+                if (data.featureName === 'direct_grading') {
+                    existingDocId = doc.id;
+                }
+            });
+        }
+
+        const data = {
+            level: state.currentLevel,
+            featureName: 'direct_grading',
+            isEnabled: newValue,
+            updatedAt: new Date().toISOString()
+        };
+
+        if (existingDocId) {
+            await window.firebaseOps.updateDoc(window.firebaseOps.doc(window.db, "level_settings", existingDocId), data);
+        } else {
+            await window.firebaseOps.addDoc(window.firebaseOps.collection(window.db, "level_settings"), data);
+        }
+
+        state.enableDirectGrading = newValue;
+        showToast(newValue ? "تم تفعيل لوحة المصدرين" : "تم تعطيل لوحة المصدرين");
+        
+        // Update Bottom Nav if teacher
+        if (state.isTeacher) {
+            const dgNav = document.getElementById('nav-direct-grading');
+            if (dgNav) {
+                dgNav.style.display = state.enableDirectGrading ? 'flex' : 'none';
+            }
+        }
+
+        renderSettings(); // Re-render to update the toggle visual
+    } catch (e) {
+        console.error(e);
+        showToast("خطأ في تحديث الإعداد", "error");
+    }
+}
+
 
 function toggleTheme() {
     state.darkMode = !state.darkMode;
@@ -1545,7 +1938,8 @@ function getStudentModalHTML() {
     return `
     <div id="student-modal" class="fixed inset-0 bg-black/50 z-[100] hidden flex items-center justify-center p-0 sm:p-4 backdrop-blur-sm">
         <div class="bg-white dark:bg-gray-800 rounded-t-3xl sm:rounded-2xl w-full max-w-md p-6 shadow-2xl h-[90vh] sm:h-auto overflow-y-auto">
-             <h3 id="student-modal-title" class="text-lg font-bold mb-6">إضافة طالب جديد</h3>
+             <h3 id="student-modal-title" class="text-lg font-bold mb-6">${getLabel('add_student')}</h3>
+
              <form id="student-form" onsubmit="handleSaveStudent(event)">
                  <input type="hidden" id="student-id">
                  
@@ -1554,7 +1948,7 @@ function getStudentModalHTML() {
                             👤
                         </div>
                         <div class="flex gap-2">
-                             <button type="button" onclick="openImagePicker()" class="flex items-center gap-2 px-4 py-2 bg-teal-50 dark:bg-teal-900/30 text-teal-600 rounded-xl text-sm font-medium hover:bg-teal-100 transition">
+                             <button type="button" onclick="openImagePicker()" class="flex items-center gap-2 px-4 py-2 bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 rounded-xl text-sm font-medium hover:bg-emerald-100 transition">
                                  <i data-lucide="image" class="w-4 h-4"></i>
                                  رفع صورة
                              </button>
@@ -1569,14 +1963,14 @@ function getStudentModalHTML() {
 
                  <div class="space-y-3">
                      <div>
-                         <label class="block text-sm font-bold mb-1">اسم الطالب</label>
+                         <label class="block text-sm font-bold mb-1">اسم ${getLabel('student')}</label>
                          <input type="text" id="student-name" required class="w-full bg-gray-50 dark:bg-gray-700 border border-gray-200 rounded-xl px-4 py-3">
                      </div>
 
                      <div>
-                         <label class="block text-sm font-bold mb-1">رقم ولي الأمر (واتساب)</label>
+                         <label class="block text-sm font-bold mb-1">${getLabel('parent_phone')} (واتساب)</label>
                          <input type="tel" id="student-number" class="w-full bg-gray-50 dark:bg-gray-700 border border-gray-200 rounded-xl px-4 py-3" placeholder="مثال: 966500000000">
-                         <p class="text-xs text-gray-400 mt-1">يستخدم للتواصل عبر واتساب عند الغياب</p>
+                         <p class="text-xs text-gray-400 mt-1">${state.currentLevel === 'ijazat' ? 'يستخدم للتواصل والمتابعة عبر واتساب' : 'يستخدم للتواصل عبر واتساب عند الغياب'}</p>
                      </div>
                      
                      <div class="grid grid-cols-2 gap-3 mt-1">
@@ -1584,24 +1978,23 @@ function getStudentModalHTML() {
                              <label class="block text-sm font-bold mb-1 text-gray-600 dark:text-gray-300">رقم الهوية</label>
                              <input type="text" id="student-national-id" class="w-full bg-gray-50 dark:bg-gray-700 border border-gray-200 rounded-xl px-4 py-3 text-sm">
                          </div>
-                         <div>
-                             <label class="block text-sm font-bold mb-1 text-gray-600 dark:text-gray-300">آخر اختبار جمعية</label>
-                             <select id="student-last-exam" class="w-full bg-gray-50 dark:bg-gray-700 border border-gray-200 rounded-xl px-4 py-3 text-sm">
-                                 <option value="">-- اختر --</option>
-                                 <option value="لم يختبر">لم يختبر</option>
-                                 <option value="1">1</option>
-                                 <option value="2">2</option>
-                                 <option value="3">3</option>
-                                 <option value="5">5</option>
-                                 <option value="8">8</option>
-                                 <option value="10">10</option>
-                                 <option value="13">13</option>
-                                 <option value="15">15</option>
-                                 <option value="20">20</option>
-                                 <option value="25">25</option>
-                                 <option value="30">30</option>
-                             </select>
-                         </div>
+                             <div>
+                                 <label class="block text-sm font-bold mb-1 text-gray-600 dark:text-gray-300">آخر اختبار جمعية</label>
+                                 <select id="student-last-exam" class="w-full bg-gray-50 dark:bg-gray-700 border border-gray-200 rounded-xl px-4 py-3 text-sm">
+                                     <option value="لم يختبر">لم يختبر</option>
+                                     <option value="1">1</option>
+                                     <option value="2">2</option>
+                                     <option value="3">3</option>
+                                     <option value="5">5</option>
+                                     <option value="8">8</option>
+                                     <option value="10">10</option>
+                                     <option value="13">13</option>
+                                     <option value="15">15</option>
+                                     <option value="20">20</option>
+                                     <option value="25">25</option>
+                                     <option value="30">30 (خاتم)</option>
+                                 </select>
+                             </div>
                      </div>
                      
                      <input type="hidden" id="student-memorization">
@@ -1611,13 +2004,20 @@ function getStudentModalHTML() {
                      
                      <div class="mb-2">
                          <label class="block text-sm font-bold mb-1">كلمة المرور</label>
-                         <input type="text" id="student-password-edit" class="w-full bg-gray-50 dark:bg-gray-700 border border-gray-200 rounded-xl px-4 py-3" placeholder="كلمة المرور (إلزامي للطلاب الجدد)">
-                         <p id="password-error" class="hidden text-red-500 text-xs mt-1 font-bold">⚠️ كلمة المرور مطلوبة للطالب الجديد</p>
+                         <input type="text" id="student-password-edit" class="w-full bg-gray-50 dark:bg-gray-700 border border-gray-200 rounded-xl px-4 py-3" placeholder="كلمة المرور (إلزامي لل${getLabel('students')} الجدد)">
+                         <p id="password-error" class="hidden text-red-500 text-xs mt-1 font-bold">⚠️ كلمة المرور مطلوبة لل${getLabel('student')} الجديد</p>
                      </div>
                      
                      <div class="flex gap-3 mt-6">
                          <button type="button" onclick="closeModal('student-modal')" class="flex-1 py-3 rounded-xl text-gray-600 hover:bg-gray-100 font-bold transition">إلغاء</button>
-                         <button type="submit" id="save-student-btn" class="flex-1 py-3 bg-teal-600 text-white rounded-xl font-bold hover:bg-teal-700 transition"><span id="save-student-text">حفظ</span></button>
+                         <button type="submit" id="save-student-btn" class="flex-1 py-3 bg-emerald-700 text-white rounded-xl font-bold hover:bg-emerald-800 transition"><span id="save-student-text">حفظ</span></button>
+                     </div>
+                     
+                     <div id="transfer-student-section" class="hidden mt-4 pt-4 border-t border-gray-100 dark:border-gray-700">
+                         <button type="button" onclick="openTransferModal()" class="w-full py-3 bg-blue-50 text-blue-700 hover:bg-blue-100 dark:bg-blue-900/30 dark:text-blue-400 rounded-xl font-bold transition flex items-center justify-center gap-2">
+                             <i data-lucide="arrow-right-left" class="w-4 h-4"></i>
+                             طلب نقل ${getLabel('student')} لحلقة أخرى
+                         </button>
                      </div>
                  </div>
              </form>
@@ -1630,20 +2030,6 @@ function getStudentModalHTML() {
             <div id="emoji-grid" class="grid grid-cols-5 gap-2 max-h-60 overflow-y-auto"></div>
             <button onclick="closeModal('emoji-picker-modal')" class="w-full mt-4 py-2 rounded-xl bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 font-medium">إغلاق</button>
         </div>
-    </div>
-
-    <div id="delete-modal" class="fixed inset-0 bg-black/50 z-[200] hidden flex items-center justify-center p-4 backdrop-blur-sm">
-         <div class="bg-white dark:bg-gray-800 rounded-2xl w-full max-w-xs p-6 shadow-2xl text-center">
-            <div class="bg-red-100 dark:bg-red-900/30 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4 text-red-600 dark:text-red-400">
-                <i data-lucide="alert-triangle" class="w-8 h-8"></i>
-            </div>
-            <h3 class="font-bold text-lg mb-2">تأكيد الحذف</h3>
-            <p class="text-gray-500 text-sm mb-6">لا يمكن التراجع عن هذه العملية.</p>
-            <div class="flex gap-3">
-                <button onclick="closeModal('delete-modal')" class="flex-1 py-2 rounded-xl bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600">إلغاء</button>
-                <button id="confirm-delete-btn" class="flex-1 py-2 rounded-xl bg-red-600 text-white hover:bg-red-700 shadow-lg">حذف</button>
-            </div>
-         </div>
     </div>
     `;
 }
@@ -1671,10 +2057,36 @@ function openEmojiPicker() {
 function selectEmoji(emoji) {
     document.getElementById('student-emoji').value = emoji;
     document.getElementById('student-emoji-preview').innerHTML = emoji;
-    // مسح أي صورة مرفوعة
     document.getElementById('student-image-upload').value = '';
     closeModal('emoji-picker-modal');
 }
+
+// فتح اختيار الإيموجي للتسجيل الذاتي
+function openIconPickerForRegistration() {
+    const emojis = ["👤", "🎓", "🏆", "🌟", "📚", "🕌", "⚽", "🧠", "⚔️", "🛡️", "🎒", "🧸", "👦", "👧", "👨‍🎓", "👩‍🎓", "🦁", "🐯", "🦅", "🐎", "🌙", "☀️", "⭐", "🚀", "💪", "🎯", "📖", "✏️", "🎨", "🧑"];
+
+    const grid = document.getElementById('emoji-grid');
+    grid.innerHTML = emojis.map(e => `
+        <button type="button" onclick="selectEmojiForRegistration('${e}')" class="w-12 h-12 text-2xl hover:bg-gray-100 dark:hover:bg-gray-700 rounded-xl transition flex items-center justify-center">
+            ${e}
+        </button>
+    `).join('');
+
+    toggleModal('emoji-picker-modal', true);
+}
+
+function selectEmojiForRegistration(emoji) {
+    window._selectedAddStudentIcon = emoji;
+    const iconContainer = document.getElementById('self-reg-selected-icon');
+    if (iconContainer) {
+        iconContainer.innerHTML = emoji + `
+        <div class="absolute inset-0 bg-black/20 flex items-center justify-center opacity-0 hover:opacity-100 transition-opacity">
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-white"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+        </div>`;
+    }
+    closeModal('emoji-picker-modal');
+}
+
 
 async function previewStudentImage(input) {
     if (input.files && input.files[0]) {
@@ -1699,7 +2111,7 @@ function getCompetitionModalsHTML() {
                                         <input type="hidden" id="competition-id">
                                             <div class="flex gap-4 mb-4">
                                                 <div class="relative group cursor-pointer shrink-0" onclick="toggleEmojiPicker('competition-emoji-btn')">
-                                                    <div id="competition-emoji-preview" class="w-16 h-16 bg-teal-50 dark:bg-gray-700 rounded-xl border-2 border-dashed border-teal-300 flex items-center justify-center text-3xl">🏆</div>
+                                                    <div id="competition-emoji-preview" class="w-16 h-16 bg-emerald-50 dark:bg-gray-700 rounded-xl border-2 border-dashed border-emerald-300 flex items-center justify-center text-3xl">🏆</div>
                                                     <input type="hidden" id="competition-emoji" value="🏆">
                                                 </div>
                                                 <div class="flex-1">
@@ -1711,7 +2123,7 @@ function getCompetitionModalsHTML() {
                                             <div class="mb-4">
                                                 <label class="block text-sm font-bold mb-2">معايير التقييم</label>
                                                 <div id="criteria-list" class="space-y-2 mb-2"></div>
-                                                <button type="button" onclick="addCriteriaItem()" class="text-teal-600 text-sm font-bold flex items-center gap-1">+ إضافة معيار</button>
+                                                <button type="button" onclick="addCriteriaItem()" class="text-emerald-700 text-sm font-bold flex items-center gap-1">+ إضافة معيار</button>
                                             </div>
 
 
@@ -1724,11 +2136,11 @@ function getCompetitionModalsHTML() {
                                                 <div class="grid grid-cols-2 gap-3">
                                                     <div>
                                                         <label class="block text-xs font-bold mb-1">بعذر (نقاط)</label>
-                                                        <input type="number" id="comp-absent-excuse" class="w-full bg-white dark:bg-gray-800 border border-orange-200 dark:border-orange-700 rounded-lg px-3 py-2 text-center" value="1">
+                                                        <input type="number" id="comp-absent-excuse" step="0.25" class="w-full bg-white dark:bg-gray-800 border border-orange-200 dark:border-orange-700 rounded-lg px-3 py-2 text-center" value="1">
                                                     </div>
                                                     <div>
                                                         <label class="block text-xs font-bold mb-1">بدون عذر (نقاط)</label>
-                                                        <input type="number" id="comp-absent-no-excuse" class="w-full bg-white dark:bg-gray-800 border border-orange-200 dark:border-orange-700 rounded-lg px-3 py-2 text-center" value="4">
+                                                        <input type="number" id="comp-absent-no-excuse" step="0.25" class="w-full bg-white dark:bg-gray-800 border border-orange-200 dark:border-orange-700 rounded-lg px-3 py-2 text-center" value="4">
                                                     </div>
                                                 </div>
                                             </div>
@@ -1741,35 +2153,35 @@ function getCompetitionModalsHTML() {
                                                 <div class="grid grid-cols-2 gap-3">
                                                     <div>
                                                         <label class="block text-[10px] font-bold mb-1">نقاط الحضور</label>
-                                                        <input type="number" id="comp-activity-points" class="w-full bg-white dark:bg-gray-800 border border-purple-200 dark:border-purple-700 rounded-lg px-3 py-2 text-center text-sm" value="">
+                                                        <input type="number" id="comp-activity-points" step="0.25" class="w-full bg-white dark:bg-gray-800 border border-purple-200 dark:border-purple-700 rounded-lg px-3 py-2 text-center text-sm" value="">
                                                     </div>
                                                     <div>
                                                         <label class="block text-[10px] font-bold mb-1 text-red-600">نقاط الخصم (غائب)</label>
-                                                        <input type="number" id="comp-activity-absent-points" class="w-full bg-white dark:bg-gray-800 border border-red-200 dark:border-red-700 rounded-lg px-3 py-2 text-center text-sm text-red-600" value="">
+                                                        <input type="number" id="comp-activity-absent-points" step="0.25" class="w-full bg-white dark:bg-gray-800 border border-red-200 dark:border-red-700 rounded-lg px-3 py-2 text-center text-sm text-red-600" value="">
                                                     </div>
                                                 </div>
                                             </div>
 
-                                            <button type="submit" id="save-competition-btn" class="w-full bg-teal-600 text-white py-3 rounded-xl font-bold hover:bg-teal-700 transition">حفظ المسابقة</button>
+                                            <button type="submit" id="save-competition-btn" class="w-full bg-emerald-700 text-white py-3 rounded-xl font-bold hover:bg-emerald-800 transition">حفظ المسابقة</button>
                                     </form>
                                 </div>
                             </div>
 
-                            <div id="groups-modal" class="fixed inset-0 bg-black/50 z-[100] hidden flex items-center justify-center p-4 backdrop-blur-sm">
+                            <div id="groups-modal" class="fixed inset-0 bg-black/50 z-[50] hidden flex items-center justify-center p-4 backdrop-blur-sm">
                                 <div class="bg-white dark:bg-gray-800 rounded-2xl w-full max-w-lg p-0 shadow-2xl max-h-[80vh] flex flex-col">
                                     <div class="p-4 border-b flex justify-between shrink-0">
                                         <div><h3 class="font-bold">إدارة المجموعات</h3><p id="groups-comp-name" class="text-xs text-gray-500"></p></div>
                                         <button onclick="closeModal('groups-modal')"><i data-lucide="x"></i></button>
                                     </div>
                                     <div class="p-4 flex-1 overflow-y-auto">
-                                        <button id="add-group-btn" onclick="openAddGroupModal()" class="w-full py-3 border-2 border-dashed border-teal-300 text-teal-600 rounded-xl font-bold mb-4 hover:bg-teal-50 transition hidden">+ مجموعة جديدة</button>
+                                        <button id="add-group-btn" onclick="openAddGroupModal()" class="w-full py-3 border-2 border-dashed border-emerald-300 text-emerald-700 rounded-xl font-bold mb-4 hover:bg-emerald-50 transition hidden">+ مجموعة جديدة</button>
                                         <div id="groups-container" class="space-y-3"></div>
                                     </div>
                                 </div>
                             </div>
 
                             <!-- Add/Edit Group Modal -->
-                            <div id="edit-group-modal" class="fixed inset-0 bg-black/60 z-[100] hidden flex items-center justify-center p-4">
+                            <div id="edit-group-modal" class="fixed inset-0 bg-black/60 z-[50] hidden flex items-center justify-center p-4">
                                 <div class="bg-white dark:bg-gray-800 rounded-2xl w-full max-w-md p-6 shadow-2xl max-h-[90vh] overflow-y-auto flex flex-col">
                                     <div class="flex justify-between items-center mb-4">
                                         <h3 id="group-modal-title" class="font-bold text-lg">إضافة مجموعة</h3>
@@ -1786,7 +2198,7 @@ function getCompetitionModalsHTML() {
                                             <div class="flex-1">
                                                 <input type="text" id="edit-group-name" placeholder="اسم المجموعة" class="w-full mb-2 bg-gray-50 dark:bg-gray-700 border rounded-xl px-4 py-2">
                                                     <div class="flex gap-2">
-                                                        <button type="button" onclick="document.getElementById('group-image-upload').click()" class="text-xs bg-teal-50 text-teal-600 px-3 py-1 rounded-lg hover:bg-teal-100">📷 صورة</button>
+                                                        <button type="button" onclick="document.getElementById('group-image-upload').click()" class="text-xs bg-emerald-50 text-emerald-700 px-3 py-1 rounded-lg hover:bg-emerald-100">📷 صورة</button>
                                                         <button type="button" onclick="cycleGroupEmoji()" class="text-xs bg-amber-50 text-amber-600 px-3 py-1 rounded-lg hover:bg-amber-100">😊 إيموجي</button>
                                                     </div>
                                             </div>
@@ -1818,16 +2230,16 @@ function getCompetitionModalsHTML() {
 
                                                 <div class="flex gap-2">
                                                     <button onclick="closeModal('edit-group-modal')" class="flex-1 py-3 rounded-xl bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 font-medium">إلغاء</button>
-                                                    <button onclick="saveGroupChanges()" class="flex-1 py-3 bg-teal-600 text-white rounded-xl font-bold hover:bg-teal-700">حفظ</button>
+                                                    <button onclick="saveGroupChanges()" class="flex-1 py-3 bg-emerald-700 text-white rounded-xl font-bold hover:bg-emerald-800">حفظ</button>
                                                 </div>
                                             </div>
                                         </div>
 
                                         <!-- Transfer Student Modal -->
-                                        <div id="transfer-modal" class="fixed inset-0 bg-black/60 z-[100] hidden flex items-center justify-center p-4">
+                                        <div id="transfer-modal" class="fixed inset-0 bg-black/60 z-[150] hidden flex items-center justify-center p-4">
                                             <div class="bg-white dark:bg-gray-800 rounded-2xl w-full max-w-sm p-6 shadow-2xl">
                                                 <div class="flex justify-between items-center mb-4">
-                                                    <h3 class="font-bold text-lg">نقل الطالب</h3>
+                                                    <h3 class="font-bold text-lg">نقل ${getLabel('student')}</h3>
                                                     <button onclick="closeModal('transfer-modal')" class="text-gray-400 hover:text-gray-600"><i data-lucide="x"></i></button>
                                                 </div>
 
@@ -1842,13 +2254,13 @@ function getCompetitionModalsHTML() {
 
                                                     <div class="flex gap-2">
                                                         <button onclick="closeModal('transfer-modal')" class="flex-1 py-3 rounded-xl bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 font-medium">إلغاء</button>
-                                                        <button onclick="confirmTransferStudent()" class="flex-1 py-3 bg-blue-600 text-white rounded-xl font-bold hover:bg-blue-700">تأكيد النقل</button>
+                                                        <button onclick="confirmTransferStudent()" class="flex-1 py-3 bg-emerald-600 text-white rounded-xl font-bold hover:bg-emerald-700">تأكيد النقل</button>
                                                     </div>
                                             </div>
                                         </div>
 
                                         <!-- Delete Competition Modal -->
-                                        <div id="delete-competition-modal" class="fixed inset-0 bg-black/50 z-[200] hidden flex items-center justify-center p-4 backdrop-blur-sm">
+                                        <div id="delete-competition-modal" class="fixed inset-0 bg-black/50 z-[10000] hidden flex items-start justify-center p-4 pt-10 backdrop-blur-sm">
                                             <div class="bg-white dark:bg-gray-800 rounded-2xl w-full max-w-xs p-6 shadow-2xl text-center">
                                                 <div class="bg-red-100 dark:bg-red-900/30 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4 text-red-600 dark:text-red-400">
                                                     <i data-lucide="alert-triangle" class="w-8 h-8"></i>
@@ -1863,7 +2275,7 @@ function getCompetitionModalsHTML() {
                                         </div>
 
                                         <!-- Reset Competition Modal -->
-                                        <div id="reset-competition-modal" class="fixed inset-0 bg-black/50 z-[200] hidden flex items-center justify-center p-4 backdrop-blur-sm">
+                                        <div id="reset-competition-modal" class="fixed inset-0 bg-black/50 z-[10000] hidden flex items-start justify-center p-4 pt-10 backdrop-blur-sm">
                                             <div class="bg-white dark:bg-gray-800 rounded-2xl w-full max-w-xs p-6 shadow-2xl text-center">
                                                 <div class="bg-orange-100 dark:bg-orange-900/30 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4 text-orange-600 dark:text-orange-400">
                                                     <i data-lucide="refresh-ccw" class="w-8 h-8"></i>
@@ -1910,130 +2322,7 @@ function getGradingModalsHTML() {
                                             </div>
                                         </div>
 
-                                        <div id="rate-student-modal" class="fixed inset-0 bg-black/60 z-[100] hidden flex items-center justify-center p-4">
-                                            <div class="bg-white dark:bg-gray-800 rounded-3xl w-full max-w-sm shadow-2xl flex flex-col max-h-[90vh]">
-                                                <div class="flex justify-between items-center p-6 border-b border-gray-100 dark:border-gray-700 shrink-0">
-                                                    <h3 id="rate-student-name" class="font-bold text-lg">اسم الطالب</h3>
-                                                    <button onclick="closeModal('rate-student-modal')"><i data-lucide="x" class="w-5 h-5"></i></button>
-                                                </div>
-                                                
-                                                <div class="p-6 overflow-y-auto flex-1">
-                                                    <!-- Quran tracking inputs (Teacher grading) -->
-                                                                                                          <div id="rate-quran-section" class="hidden mb-4 space-y-4">
-                                                         <!-- Hifz Box -->
-                                                         <div class="bg-emerald-50 dark:bg-emerald-900/10 p-4 rounded-xl border border-emerald-100 dark:border-emerald-800 text-right space-y-3 shadow-sm">
-                                                             <h4 class="font-bold text-xs text-emerald-700 dark:text-emerald-400 flex items-center gap-1">📝 تسجيل الحفظ</h4>
-                                                             <div class="grid grid-cols-2 gap-2">
-                                                                 <div>
-                                                                     <p class="text-[10px] font-bold text-gray-500 mb-1">من سورة</p>
-                                                                     <select id="rate-quran-start-sura-memorization" class="w-full bg-white dark:bg-gray-700 border border-gray-200 rounded-lg px-1 py-1.5 text-[11px] font-bold" onchange="updateQuranAyas('start', 'memorization')">
-                                                                         <option value="">السورة..</option>
-                                                                     </select>
-                                                                 </div>
-                                                                 <div>
-                                                                     <p class="text-[10px] font-bold text-gray-500 mb-1">من آية</p>
-                                                                     <select id="rate-quran-start-aya-memorization" class="w-full bg-white dark:bg-gray-700 border border-gray-200 rounded-lg px-1 py-1.5 text-[11px]" disabled>
-                                                                         <option value="">الآية..</option>
-                                                                     </select>
-                                                                 </div>
-                                                                 <div>
-                                                                     <p class="text-[10px] font-bold text-gray-500 mb-1">إلى سورة</p>
-                                                                     <select id="rate-quran-end-sura-memorization" class="w-full bg-white dark:bg-gray-700 border border-gray-200 rounded-lg px-1 py-1.5 text-[11px] font-bold" onchange="updateQuranAyas('end', 'memorization')">
-                                                                         <option value="">السورة..</option>
-                                                                     </select>
-                                                                 </div>
-                                                                 <div>
-                                                                     <p class="text-[10px] font-bold text-gray-500 mb-1">إلى آية</p>
-                                                                     <select id="rate-quran-end-aya-memorization" class="w-full bg-white dark:bg-gray-700 border border-gray-200 rounded-lg px-1 py-1.5 text-[11px]" disabled>
-                                                                         <option value="">الآية..</option>
-                                                                     </select>
-                                                                 </div>
-                                                             </div>
-                                                             <div>
-                                                                 <p class="text-[10px] font-bold text-gray-500 mb-1">التقدير</p>
-                                                                 <select id="rate-quran-grade-memorization" class="w-full bg-white dark:bg-gray-700 border border-gray-200 rounded-lg px-1 py-1.5 text-[11px] font-bold">
-                                                                     <option value="">اختر التقدير..</option>
-                                                                     <option value="ممتاز">⭐ ممتاز</option>
-                                                                     <option value="جيد جداً">✨ جيد جداً</option>
-                                                                     <option value="مقبول">👍 مقبول</option>
-                                                                     <option value="سيء">⚠️ سيء</option>
-                                                                     <option value="لم يحفظ">❌ لم يحفظ</option>
-                                                                 </select>
-                                                             </div>
-                                                             <button onclick="submitQuranRecord('memorization')" class="w-full py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl transition flex items-center justify-center gap-2">
-                                                                 <i data-lucide="save" class="w-4 h-4"></i>حفظ المقطع
-                                                             </button>
-                                                         </div>
 
-                                                         <!-- Murajaa Box -->
-                                                         <div class="bg-blue-50 dark:bg-blue-900/10 p-4 rounded-xl border border-blue-100 dark:border-blue-800 text-right space-y-3 shadow-sm">
-                                                             <h4 class="font-bold text-xs text-blue-700 dark:text-blue-400 flex items-center gap-1">🔄 تسجيل المراجعة</h4>
-                                                             <div class="grid grid-cols-2 gap-2">
-                                                                 <div>
-                                                                     <p class="text-[10px] font-bold text-gray-500 mb-1">من سورة</p>
-                                                                     <select id="rate-quran-start-sura-review" class="w-full bg-white dark:bg-gray-700 border border-gray-200 rounded-lg px-1 py-1.5 text-[11px] font-bold" onchange="updateQuranAyas('start', 'review')">
-                                                                         <option value="">السورة..</option>
-                                                                     </select>
-                                                                 </div>
-                                                                 <div>
-                                                                     <p class="text-[10px] font-bold text-gray-500 mb-1">من آية</p>
-                                                                     <select id="rate-quran-start-aya-review" class="w-full bg-white dark:bg-gray-700 border border-gray-200 rounded-lg px-1 py-1.5 text-[11px]" disabled>
-                                                                         <option value="">الآية..</option>
-                                                                     </select>
-                                                                 </div>
-                                                                 <div>
-                                                                     <p class="text-[10px] font-bold text-gray-500 mb-1">إلى سورة</p>
-                                                                     <select id="rate-quran-end-sura-review" class="w-full bg-white dark:bg-gray-700 border border-gray-200 rounded-lg px-1 py-1.5 text-[11px] font-bold" onchange="updateQuranAyas('end', 'review')">
-                                                                         <option value="">السورة..</option>
-                                                                     </select>
-                                                                 </div>
-                                                                 <div>
-                                                                     <p class="text-[10px] font-bold text-gray-500 mb-1">إلى آية</p>
-                                                                     <select id="rate-quran-end-aya-review" class="w-full bg-white dark:bg-gray-700 border border-gray-200 rounded-lg px-1 py-1.5 text-[11px]" disabled>
-                                                                         <option value="">الآية..</option>
-                                                                     </select>
-                                                                 </div>
-                                                             </div>
-                                                             <div>
-                                                                 <p class="text-[10px] font-bold text-gray-500 mb-1">التقدير</p>
-                                                                 <select id="rate-quran-grade-review" class="w-full bg-white dark:bg-gray-700 border border-gray-200 rounded-lg px-1 py-1.5 text-[11px] font-bold">
-                                                                     <option value="">اختر التقدير..</option>
-                                                                     <option value="ممتاز">⭐ ممتاز</option>
-                                                                     <option value="جيد جداً">✨ جيد جداً</option>
-                                                                     <option value="مقبول">👍 مقبول</option>
-                                                                     <option value="سيء">⚠️ سيء</option>
-                                                                     <option value="لم يراجع">❌ لم يراجع</option>
-                                                                 </select>
-                                                             </div>
-                                                             <button onclick="submitQuranRecord('review')" class="w-full py-2 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl transition flex items-center justify-center gap-2">
-                                                                 <i data-lucide="save" class="w-4 h-4"></i>حفظ المراجعة
-                                                             </button>
-                                                         </div>
-                                                     </div>                     
-                                                    <div id="rate-quran-plan-display" class="hidden mb-3 text-sm text-center bg-gray-50 dark:bg-gray-700/50 border border-gray-200 dark:border-gray-600 p-2 rounded-lg font-bold text-teal-700 dark:text-teal-400"></div>
-    
-                                                    <p id="rate-date-display" class="text-center text-sm text-gray-500 mb-4 font-bold bg-gray-100 dark:bg-gray-700 py-1 rounded-lg"></p>
-                                                    
-                                                    <!-- Note Box -->
-                                                    <div class="mb-4 bg-yellow-50 dark:bg-yellow-900/10 p-4 rounded-xl border border-yellow-200 dark:border-yellow-800 text-right space-y-3 shadow-sm">
-                                                        <h4 class="font-bold text-xs text-yellow-700 dark:text-yellow-400 flex items-center gap-1">📝 إرسال ملاحظة نصية</h4>
-                                                        <textarea id="rate-note-text" rows="2" class="w-full bg-white dark:bg-gray-700 border border-yellow-200 rounded-lg px-2 py-2 text-xs" placeholder="اكتب الملاحظة هنا..."></textarea>
-                                                        <div class="flex items-center gap-2">
-                                                            <select id="rate-note-visibility" class="bg-white dark:bg-gray-700 border border-yellow-200 rounded-lg px-1 py-1 text-xs font-bold text-gray-600">
-                                                                <option value="both">للطالب وولي الأمر</option>
-                                                                <option value="student">للطالب فقط</option>
-                                                                <option value="parent">لولي الأمر فقط</option>
-                                                            </select>
-                                                            <button onclick="submitNote()" class="flex-1 py-2 bg-yellow-500 hover:bg-yellow-600 text-white font-bold text-xs rounded-lg transition flex items-center justify-center gap-2">
-                                                                <i data-lucide="send" class="w-4 h-4"></i> إرسال الملاحظة
-                                                            </button>
-                                                        </div>
-                                                    </div>
-
-                                                    <div id="criteria-buttons-grid" class="grid grid-cols-1 gap-3"></div>
-                                                </div>
-                                            </div>
-                                        </div>
 
                                         <!-- Activity Day Modals -->
                                         <div id="activity-check-modal" class="fixed inset-0 bg-black/60 z-[120] hidden flex items-center justify-center p-4 backdrop-blur-sm">
@@ -2055,7 +2344,7 @@ function getGradingModalsHTML() {
                                                         <i data-lucide="check-circle" class="w-8 h-8"></i>
                                                     </div>
                                                     <h3 class="font-bold text-lg">تم رصد يوم النشاط!</h3>
-                                                    <p class="text-sm text-gray-500">تم تسجيل الغياب، يمكنك مراسلة أولياء الأمور:</p>
+                                                    <p class="text-sm text-gray-500">${state.currentLevel === 'ijazat' ? 'تم تسجيل الغياب، يمكنك مراسلة الدارسين مباشرة:' : 'تم تسجيل الغياب، يمكنك مراسلة أولياء الأمور:'}</p>
                                                 </div>
                                                 <div id="activity-absent-whatsapp-list" class="space-y-3 mb-6"></div>
                                                 <button onclick="closeModal('activity-absent-modal')" class="w-full py-3 bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 rounded-xl font-bold">إغلاق</button>
@@ -2063,7 +2352,7 @@ function getGradingModalsHTML() {
                                         </div>
 
                                         <!-- Reset Student Scores Modal -->
-                                        <div id="reset-student-scores-modal" class="fixed inset-0 bg-black/60 z-[200] hidden flex items-center justify-center p-4 backdrop-blur-sm">
+                                        <div id="reset-student-scores-modal" class="fixed inset-0 bg-black/60 z-[10000] hidden flex items-start justify-center p-4 pt-10 backdrop-blur-sm">
                                             <div class="bg-white dark:bg-gray-800 rounded-2xl w-full max-w-sm p-6 shadow-2xl flex flex-col text-center">
                                                 <div class="w-16 h-16 bg-red-100 dark:bg-red-900/30 text-red-600 rounded-full flex items-center justify-center mx-auto mb-4">
                                                     <i data-lucide="alert-triangle" class="w-8 h-8"></i>
@@ -2075,6 +2364,20 @@ function getGradingModalsHTML() {
                                                     <button onclick="confirmResetStudentScores()" class="flex-1 py-3 bg-red-600 hover:bg-red-700 text-white rounded-xl font-bold transition shadow-lg">نعم، تصفير</button>
                                                 </div>
                                             </div>
+                                        </div>
+
+                                        <div id="delete-modal-v2" style="z-index: 99999 !important;" class="fixed inset-0 bg-black/70 hidden flex items-start justify-center p-4 pt-20 backdrop-blur-md">
+                                             <div class="bg-white dark:bg-gray-800 rounded-3xl w-full max-w-xs p-6 shadow-[0_0_50px_rgba(0,0,0,0.3)] text-center border-2 border-red-500/20">
+                                                <div class="bg-red-100 dark:bg-red-900/30 w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-4 text-red-600 dark:text-red-400">
+                                                    <i data-lucide="alert-triangle" class="w-10 h-10"></i>
+                                                </div>
+                                                <h3 class="font-bold text-xl mb-2">تأكيد الحذف النهائي</h3>
+                                                <p class="text-gray-500 text-sm mb-6 font-medium">هذا الإجراء سيقوم بحذف البيانات نهائياً ولا يمكن التراجع عنه.</p>
+                                                <div class="flex flex-col gap-3">
+                                                    <button id="confirm-delete-btn-v2" class="w-full py-4 rounded-2xl bg-red-600 text-white font-bold hover:bg-red-700 shadow-lg shadow-red-200 dark:shadow-none transition-all active:scale-95">تأكيد الحذف</button>
+                                                    <button onclick="closeModal('delete-modal-v2')" class="w-full py-3 rounded-2xl bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 font-bold transition-all">تراجع</button>
+                                                </div>
+                                             </div>
                                         </div>
                                         `;
 }
@@ -2113,9 +2416,114 @@ function openAddStudentModal() {
     $('#save-student-text').textContent = 'حفظ';
     if(document.getElementById('student-national-id')) document.getElementById('student-national-id').value = '';
     if(document.getElementById('student-last-exam')) document.getElementById('student-last-exam').value = '';
+    if(document.getElementById('student-last-exam')) document.getElementById('student-last-exam').value = '';
+    
+    const ts = $('#transfer-student-section');
+    if (ts) ts.classList.add('hidden');
     
     toggleModal('student-modal', true);
 }
+
+function openTransferModal() {
+    closeModal('student-modal'); // Close edit modal
+    
+    // Create prompt options for levels
+    let levelsHtml = '';
+    for (const [key, value] of Object.entries(LEVELS)) {
+        if (key !== state.currentLevel && !value.hidden) {
+            levelsHtml += `<option value="${key}">${value.name}</option>`;
+        }
+    }
+
+    const studentId = $('#student-id').value;
+    const studentName = $('#student-name').value;
+
+    const modalHtml = `
+        <div id="transfer-modal" class="fixed inset-0 bg-black/50 z-[110] flex items-center justify-center p-4 backdrop-blur-sm animate-fade-in">
+            <div class="bg-white dark:bg-gray-800 rounded-2xl w-full max-w-md p-6 shadow-2xl">
+                <div class="flex items-center gap-3 mb-4 text-blue-600 dark:text-blue-400">
+                    <i data-lucide="arrow-right-left" class="w-6 h-6"></i>
+                    <h3 class="text-lg font-bold">طلب نقل ال${getLabel('student')}: ${studentName}</h3>
+                </div>
+
+                
+                <div class="space-y-4">
+                    <div>
+                        <label class="block text-sm font-bold mb-1">إلى أي حلقة تريد نقل الطالب؟</label>
+                        <select id="transfer-to-level" class="w-full bg-gray-50 dark:bg-gray-700 border border-gray-200 rounded-xl px-4 py-3">
+                            <option value="">-- اختر الحلقة --</option>
+                            ${levelsHtml}
+                        </select>
+                    </div>
+                    
+                    <div class="bg-red-50 dark:bg-red-900/20 p-3 rounded-xl border border-red-100 dark:border-red-900/30">
+                        <label class="flex items-start gap-3 cursor-pointer">
+                            <input type="checkbox" id="transfer-delete-data" class="mt-1 w-4 h-4 text-red-600">
+                            <div>
+                                <span class="block text-sm font-bold text-red-800 dark:text-red-300">مسح بيانات ال${getLabel('student')} في حلقتي</span>
+                                <span class="block text-xs text-red-600 dark:text-red-400 mt-1">${state.currentLevel === 'ijazat' ? 'إذا قمت بتحديد هذا الخيار، سيتم حذف جميع درجات ومراجعات الدارس المسجلة باسم حلقتك (بشكل نهائي) بمجرد قبول المعلم الآخر للطلب.' : 'إذا قمت بتحديد هذا الخيار، سيتم حذف جميع درجات ومراجعات الطالب المسجلة باسم حلقتك (بشكل نهائي) بمجرد قبول المعلم الآخر للطلب.'} إذا تركته فارغاً سيتم الاحتفاظ بدرجاته كأرشيف لحلقتك.</span>
+                            </div>
+                        </label>
+                    </div>
+
+                </div>
+
+                <div class="flex gap-3 mt-6">
+                    <button type="button" onclick="document.getElementById('transfer-modal').remove()" class="flex-1 py-3 rounded-xl text-gray-600 hover:bg-gray-100 font-bold transition">إلغاء</button>
+                    <button type="button" onclick="submitTransferRequest('${studentId}', '${state.currentLevel}')" class="flex-1 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold transition flex items-center justify-center gap-2">
+                        <i data-lucide="send" class="w-4 h-4"></i>
+                        إرسال الطلب
+                    </button>
+                </div>
+            </div>
+        </div>
+    `;
+
+    document.body.insertAdjacentHTML('beforeend', modalHtml);
+    lucide.createIcons();
+}
+
+async function submitTransferRequest(studentId, fromLevel) {
+    const toLevel = document.getElementById('transfer-to-level').value;
+    const deleteOldData = document.getElementById('transfer-delete-data').checked;
+
+    if (!toLevel) {
+        showToast("الرجاء اختيار الحلقة المستهدفة", "error");
+        return;
+    }
+
+    try {
+        const qSafe = window.firebaseOps.query(
+            window.firebaseOps.collection(window.db, "transfer_requests"),
+            window.firebaseOps.where("studentId", "==", studentId),
+            window.firebaseOps.where("status", "==", "pending")
+        );
+        const snap = await window.firebaseOps.getDocs(qSafe);
+        
+        if (!snap.empty) {
+            showToast("يوجد طلب نقل قيد الانتظار لهذا الطالب بالفعل!", "error");
+            document.getElementById('transfer-modal').remove();
+            return;
+        }
+
+        await window.firebaseOps.addDoc(window.firebaseOps.collection(window.db, "transfer_requests"), {
+            studentId: studentId,
+            fromLevel: fromLevel,
+            toLevel: toLevel,
+            deleteOldData: deleteOldData,
+            status: 'pending',
+            updatedAt: new Date().toISOString()
+        });
+
+        document.getElementById('transfer-modal').remove();
+        showToast(`تم إرسال طلب النقل لمعلم الحلقة المحددة. ال${getLabel('student')} سيبقى في قائمتك حتى يتم القبول.`, "success");
+
+    } catch (e) {
+        console.error(e);
+        showToast("حدث خطأ أثناء إرسال الطلب", "error");
+    }
+}
+
 
 
 
@@ -2175,9 +2583,18 @@ async function openEditStudent(id) {
         preview.innerHTML = student.icon || '👤';
     }
 
-    $('#student-modal-title').textContent = 'تعديل بيانات الطالب';
+    $('#student-modal-title').textContent = getLabel('edit_student');
+
     $('#save-student-text').textContent = 'تحديث';
 
+    const ts = $('#transfer-student-section');
+    if (ts) {
+        if (state.isTeacher) {
+            ts.classList.remove('hidden');
+        } else {
+            ts.classList.add('hidden');
+        }
+    }
 
     toggleModal('student-modal', true);
 }
@@ -2185,9 +2602,10 @@ async function openEditStudent(id) {
 let studentToDeleteId = null;
 function confirmDeleteStudent(id) {
     studentToDeleteId = id;
-    toggleModal('delete-modal', true);
+    toggleModal('delete-modal-v2', true);
     // Bind verify
-    $('#confirm-delete-btn').onclick = performDeleteStudent;
+    const confirmBtn = document.getElementById('confirm-delete-btn-v2');
+    if (confirmBtn) confirmBtn.onclick = performDeleteStudent;
 }
 
 async function performDeleteStudent() {
@@ -2199,7 +2617,7 @@ async function performDeleteStudent() {
         
         await window.firebaseOps.deleteDoc(window.firebaseOps.doc(window.db, "students", studentToDeleteId));
         showToast("تم الحذف");
-        closeModal('delete-modal');
+        closeModal('delete-modal-v2');
         
         // Audit log — critical operation
         logAuditEvent('delete_student', 'student', studentToDeleteId, { studentName });
@@ -2272,7 +2690,7 @@ function fetchGroupsForCompetition(compId) {
                                                 </div>
                                                 ${state.isTeacher ? `
                     <div class="border-t flex divide-x dark:divide-gray-600">
-                        <button onclick="event.stopPropagation(); openEditGroup('${g.id}')" class="flex-1 text-teal-600 dark:text-teal-400 font-bold text-sm py-2 hover:bg-teal-50 dark:hover:bg-teal-900/30 transition">
+                        <button onclick="event.stopPropagation(); openEditGroup('${g.id}')" class="flex-1 text-emerald-700 dark:text-emerald-400 font-bold text-sm py-2 hover:bg-emerald-50 dark:hover:bg-emerald-900/30 transition">
                             <i data-lucide="edit-2" class="w-3 h-3 inline"></i> تعديل
                         </button>
                         <button onclick="event.stopPropagation(); deleteGroup('${g.id}')" class="flex-1 text-red-600 dark:text-red-400 font-bold text-sm py-2 hover:bg-red-50 dark:hover:bg-red-900/30 transition">
@@ -2319,18 +2737,24 @@ async function viewGroupStudents(groupId) {
     } catch (e) { console.error("Error fetching scores:", e); }
 
     let html = `
-                                            <div class="mb-4">
-                                                <button onclick="fetchGroupsForCompetition('${currentManageCompId}')" class="text-teal-600 font-bold text-sm flex items-center gap-1">
-                                                    <i data-lucide="arrow-right" class="w-4 h-4"></i>
-                                                    العودة للمجموعات
+                                            <div class="mb-4 flex justify-between items-center">
+                                                <div>
+                                                    <button onclick="fetchGroupsForCompetition('${currentManageCompId}')" class="text-emerald-700 font-bold text-sm flex items-center gap-1">
+                                                        <i data-lucide="arrow-right" class="w-4 h-4"></i>
+                                                        العودة للمجموعات
+                                                    </button>
+                                                    <h4 class="font-bold text-lg mt-2">${group.name}</h4>
+                                                </div>
+                                                <button onclick="openCollectiveNoteModal()" class="bg-purple-100 text-purple-700 hover:bg-purple-200 px-3 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1 border border-purple-200">
+                                                    <i data-lucide="message-square" class="w-4 h-4"></i>
+                                                    ملاحظة جماعية
                                                 </button>
-                                                <h4 class="font-bold text-lg mt-2">${group.name}</h4>
                                             </div>
                                             <div class="space-y-2">
                                                 `;
 
     if (groupStudents.length === 0) {
-        html += '<p class="text-center text-gray-400 py-4">لا يوجد طلاب في هذه المجموعة</p>';
+        html += `<p class="text-center text-gray-400 py-4">لا يوجد ${getLabel('students')} في هذه المجموعة</p>`;
     } else {
         groupStudents.forEach(s => {
             const isImg = s.icon && s.icon.startsWith('data:image');
@@ -2349,7 +2773,7 @@ async function viewGroupStudents(groupId) {
                             <h4 class="font-bold text-sm flex items-center gap-1">
                                 ${s.name}
                                 ${isLeader ? '<span class="text-amber-500">👑</span>' : ''}
-                                ${isDeputy ? '<span class="text-blue-500">⭐</span>' : ''}
+                                ${isDeputy ? '<span class="text-emerald-500">⭐</span>' : ''}
                             </h4>
                             <p class="text-xs text-gray-500">${s.studentNumber || ''}</p>
                         </div>
@@ -2368,13 +2792,13 @@ async function viewGroupStudents(groupId) {
     html += `
                                             </div>
                                             </div>
-                                            <div class="mt-4 p-3 bg-teal-50 dark:bg-teal-900/30 rounded-xl flex items-center justify-between">
+                                            <div class="mt-4 p-3 bg-emerald-50 dark:bg-emerald-900/30 rounded-xl flex items-center justify-between">
                                                 <div>
-                                                    <span class="text-sm text-teal-700 dark:text-teal-300 block">مجموع نقاط المجموعة:</span>
-                                                    <span class="text-2xl font-bold text-teal-600 dark:text-teal-400">${groupTotal}</span>
+                                                    <span class="text-sm text-emerald-800 dark:text-emerald-300 block">مجموع نقاط المجموعة:</span>
+                                                    <span class="text-2xl font-bold text-emerald-700 dark:text-emerald-400">${groupTotal}</span>
                                                 </div>
                                                 ${state.isTeacher ? `
-                                                <button onclick="generateGroupWeeklyReport('${group.id}')" class="bg-teal-600 text-white px-4 py-2 rounded-xl text-sm font-bold shadow-lg hover:bg-teal-700 transition flex items-center gap-2">
+                                                <button onclick="generateGroupWeeklyReport('${group.id}')" class="bg-emerald-700 text-white px-4 py-2 rounded-xl text-sm font-bold shadow-lg hover:bg-emerald-800 transition flex items-center gap-2">
                                                     <i data-lucide="bar-chart-2" class="w-4 h-4"></i>
                                                     تقرير الأسبوع
                                                 </button>
@@ -2447,7 +2871,7 @@ async function generateGroupWeeklyReport(groupId) {
         let activityDaysTaken = 0;
 
         scores.forEach(s => {
-            const p = parseInt(s.points) || 0;
+            const p = parseFloat(s.points) || 0;
             if (s.criteriaId === 'ABSENCE_RECORD') {
                 totalAbsenceDeduction += p; // p is negative
                 absenceCount++;
@@ -2461,7 +2885,7 @@ async function generateGroupWeeklyReport(groupId) {
         let dailyStandardPossible = 0;
         if (comp.criteria) {
             comp.criteria.forEach(c => {
-                dailyStandardPossible += (parseInt(c.positivePoints) || 0);
+                dailyStandardPossible += (parseFloat(c.positivePoints) || 0);
             });
         }
 
@@ -2482,7 +2906,7 @@ async function generateGroupWeeklyReport(groupId) {
         // 4. Construct Message
         let reportText = `📊 *تقرير الفترة السابقة (مجموعة ${group.name})* 📊\n`;
         reportText += `📅 الفترة: ${dateStrings[0] || ''} إلى ${dateStrings[dateStrings.length - 1] || ''}\n`;
-        reportText += `👥 عدد الطلاب: ${memberIds.length}\n`;
+        reportText += `👥 عدد ${getLabel('students')}: ${memberIds.length}\n`;
         if (activityDaysTaken > 0) {
             reportText += `🎪 تم إقامة نشاط في هذه الفترة\n`;
         }
@@ -2626,7 +3050,7 @@ function renderGroupMembersSelect(selectedIds, leaderId, deputyId) {
     if (!list) return;
 
     if (state.students.length === 0) {
-        list.innerHTML = '<p class="text-center text-gray-400 text-sm py-2">لا يوجد طلاب</p>';
+        list.innerHTML = `<p class="text-center text-gray-400 text-sm py-2">لا يوجد ${getLabel('students')}</p>`;
         return;
     }
 
@@ -2635,7 +3059,7 @@ function renderGroupMembersSelect(selectedIds, leaderId, deputyId) {
         const isLeaderOrDeputy = s.id === leaderId || s.id === deputyId;
         return `
                                                 <label class="flex items-center gap-2 p-1.5 hover:bg-gray-100 dark:hover:bg-gray-600 rounded cursor-pointer ${isLeaderOrDeputy ? 'opacity-50' : ''}" >
-                                                    <input type="checkbox" value="${s.id}" class="group-member-checkbox w-4 h-4 text-teal-600 rounded" ${isSelected ? 'checked' : ''} ${isLeaderOrDeputy ? 'disabled' : ''}>
+                                                    <input type="checkbox" value="${s.id}" class="group-member-checkbox w-4 h-4 text-emerald-700 rounded" ${isSelected ? 'checked' : ''} ${isLeaderOrDeputy ? 'disabled' : ''}>
                                                         <span class="text-sm">${s.name}</span>
                                                         ${isLeaderOrDeputy ? '<span class="text-xs text-gray-400">(قائد/نائب)</span>' : ''}
                                                 </label>
@@ -2656,6 +3080,7 @@ async function saveGroupChanges() {
     if (deputy && !members.includes(deputy)) members.push(deputy);
 
     if (!name) { showToast("اسم المجموعة مطلوب", "error"); return; }
+    if (!leader && !deputy) { showToast("يرجى تحديد قائد أو نائب للمجموعة على الأقل", "warning"); return; }
 
     // Check if any student is already in another group for this competition
     try {
@@ -2678,7 +3103,7 @@ async function saveGroupChanges() {
         const duplicates = members.filter(m => existingMembers.has(m));
         if (duplicates.length > 0) {
             const dupNames = state.students.filter(s => duplicates.includes(s.id)).map(s => s.name).join(', ');
-            showToast(`طلاب مسجلون في مجموعات أخرى: ${dupNames}`, "error");
+            showToast(`${getLabel('students')} مسجلون في مجموعات أخرى: ${dupNames}`, "error");
             return;
         }
 
@@ -2812,8 +3237,8 @@ function openGroupGrading(groupId) {
         if (memberIds.length === 0) {
             container.innerHTML = `
                 <div class="text-center py-4">
-                    <button onclick="openGradingSession('${currentGradingCompId}')" class="text-teal-600 font-bold text-sm mb-4">← العودة للمجموعات</button>
-                    <p class="text-gray-400">لا يوجد طلاب في هذه المجموعة</p>
+                    <button onclick="openGradingSession('${currentGradingCompId}')" class="text-emerald-700 font-bold text-sm mb-4">← العودة للمجموعات</button>
+                    <p class="text-gray-400">لا يوجد ${getLabel('students')} في هذه المجموعة</p>
                 </div>`;
             return;
         }
@@ -2846,7 +3271,7 @@ function openGroupGrading(groupId) {
         if (groupStudents.length === 0) {
             container.innerHTML = `
                 <div class="text-center py-4">
-                    <button onclick="openGradingSession('${currentGradingCompId}')" class="text-teal-600 font-bold text-sm mb-4">← العودة للمجموعات</button>
+                    <button onclick="openGradingSession('${currentGradingCompId}')" class="text-emerald-700 font-bold text-sm mb-4">← العودة للمجموعات</button>
                     <p class="text-gray-400">لا يوجد طلاب في هذه المجموعة</p>
                 </div>`;
             return;
@@ -2855,7 +3280,7 @@ function openGroupGrading(groupId) {
         let html = `
             <div class="sticky top-0 bg-white dark:bg-gray-800 py-2 mb-3 border-b flex justify-between items-center">
                 <div>
-                    <button onclick="openGradingSession('${currentGradingCompId}')" class="text-teal-600 font-bold text-sm flex items-center gap-1">
+                    <button onclick="openGradingSession('${currentGradingCompId}')" class="text-emerald-700 font-bold text-sm flex items-center gap-1">
                         <i data-lucide="arrow-right" class="w-4 h-4"></i>
                         العودة
                     </button>
@@ -2907,10 +3332,29 @@ function filterGradingList(val) {
 }
 
 function openRateStudent(studentId) {
+    ensureRateStudentModal();
     currentRateStudentId = studentId;
     const s = state.students.find(x => x.id === studentId);
-    $('#rate-student-name').textContent = s ? s.name : 'تقييم الطالب';
+    $('#rate-student-name').textContent = s ? s.name : `تقييم ${getLabel('student')}`;
     if(document.getElementById('rate-note-text')) document.getElementById('rate-note-text').value = '';
+    
+    // Set date
+    const mainDate = $('#grading-date') ? $('#grading-date').value : new Date().toISOString().split('T')[0];
+    if (document.getElementById('modal-grading-date')) {
+        document.getElementById('modal-grading-date').value = mainDate;
+    }
+
+    // Handle Ijazat Note visibility
+    const visSelect = document.getElementById('rate-note-visibility');
+    if (visSelect) {
+        if (state.currentLevel === 'ijazat') {
+            visSelect.value = 'student'; // Always to student
+            visSelect.classList.add('hidden'); // Hide it completely
+        } else {
+            visSelect.classList.remove('hidden');
+        }
+    }
+
     // Show and initialize quran section
     const quranSec = document.getElementById('rate-quran-section');
     if (quranSec) {
@@ -2945,7 +3389,10 @@ function openRateStudent(studentId) {
 
     // عرض التاريخ
     const dateVal = $('#grading-date').value;
-    $('#rate-date-display').textContent = `تاريخ الرصد: ${dateVal}`;
+    const dateDisplay = document.getElementById('rate-date-display');
+    if (dateDisplay) {
+        dateDisplay.textContent = `تاريخ الرصد: ${dateVal}`;
+    }
 
     // Get Competition Criteria
     const comp = state.competitions.find(c => c.id === currentGradingCompId);
@@ -2955,19 +3402,46 @@ function openRateStudent(studentId) {
     }
 
     const grid = $('#criteria-buttons-grid');
-    grid.innerHTML = comp.criteria.map(c => `
-                                                <div class="flex items-center gap-2">
-                                                    <button onclick="submitScore('${c.id}', ${c.positivePoints}, '${c.name}', 'positive')" class="flex-1 bg-green-50 text-green-700 border border-green-200 py-3 rounded-xl font-bold hover:bg-green-100 transition flex justify-between px-4">
-                                                        <span>${c.name} (+${c.positivePoints})</span>
-                                                        <i data-lucide="thumbs-up" class="w-4 h-4"></i>
-                                                    </button>
-                                                    ${c.negativePoints ? `
-            <button onclick="submitScore('${c.id}', -${c.negativePoints}, '${c.name}', 'negative')" class="w-20 bg-red-50 text-red-700 border border-red-200 py-3 rounded-xl font-bold hover:bg-red-100 transition flex justify-center">
-                <span>-${c.negativePoints}</span>
-            </button>
-            ` : ''}
-                                                </div>
-                                                `).join('');
+    grid.innerHTML = comp.criteria.map(c => {
+        const hasPos = parseFloat(c.positivePoints) > 0;
+        const hasNeg = parseFloat(c.negativePoints) > 0;
+        const isMult = !!c.isMultiplier;
+
+        return `
+            <div class="bg-gray-50 dark:bg-gray-800/50 p-4 rounded-2xl border border-gray-100 dark:border-gray-700 space-y-3 mb-2">
+                <div class="flex justify-between items-center">
+                    <span class="font-bold text-sm">${c.name}</span>
+                    <span class="text-[9px] text-gray-400 font-bold uppercase tracking-wider">${isMult ? 'تكرار متعدد' : 'ثابت'}</span>
+                </div>
+                
+                <div class="flex items-center gap-2">
+                    ${hasPos ? `
+                        <button onclick="submitScoreWithMultiplier('${c.id}', ${c.positivePoints}, '${c.name}', 'positive', ${isMult})" 
+                                class="flex-1 bg-emerald-50 text-emerald-700 border border-emerald-100 py-3 rounded-xl font-bold hover:bg-emerald-100 transition flex items-center justify-center gap-2">
+                            <i data-lucide="plus" class="w-4 h-4"></i>
+                            <span>+${c.positivePoints}</span>
+                        </button>
+                    ` : ''}
+                    
+                    ${hasNeg ? `
+                        <button onclick="submitScoreWithMultiplier('${c.id}', ${c.negativePoints}, '${c.name}', 'negative', ${isMult})" 
+                                class="flex-1 bg-rose-50 text-rose-700 border border-rose-100 py-3 rounded-xl font-bold hover:bg-rose-100 transition flex items-center justify-center gap-2">
+                            <i data-lucide="minus" class="w-4 h-4"></i>
+                            <span>-${c.negativePoints}</span>
+                        </button>
+                    ` : ''}
+                </div>
+
+                ${isMult ? `
+                    <div class="flex items-center gap-2 bg-white dark:bg-gray-700 p-2 rounded-xl border border-gray-200 dark:border-gray-600">
+                        <span class="text-xs text-gray-500 font-bold px-2">العدد:</span>
+                        <input type="number" id="mult-qty-${c.id}" value="1" min="1" step="1" 
+                               class="w-full bg-transparent text-center font-extrabold text-emerald-900 dark:text-emerald-400 focus:outline-none text-sm">
+                    </div>
+                ` : ''}
+            </div>
+        `;
+    }).join('');
 
     // زر الغياب الإضافي + زر التقرير الأسبوعي + زر نقاط مخصصة
     grid.innerHTML += `
@@ -2976,13 +3450,13 @@ function openRateStudent(studentId) {
                 <i data-lucide="user-x" class="w-4 h-4"></i>
                 <span>تسجيل غياب</span>
             </button>
-             <button onclick="generateWeeklyReport()" class="bg-blue-50 text-blue-700 border border-blue-200 py-3 rounded-xl font-bold hover:bg-blue-100 transition flex items-center justify-center gap-2">
+             <button onclick="generateWeeklyReport()" class="bg-emerald-50 text-emerald-700 border border-emerald-200 py-3 rounded-xl font-bold hover:bg-emerald-100 transition flex items-center justify-center gap-2">
                 <i data-lucide="file-text" class="w-4 h-4"></i>
                 <span>تقرير أسبوعي</span>
             </button>
         </div>
         <div class="col-span-1 mt-1 w-full flex gap-2">
-            <button onclick="openCustomPointsModal()" class="flex-1 py-3 bg-teal-50 hover:bg-teal-100 dark:bg-teal-900/30 dark:hover:bg-teal-900/50 text-teal-700 dark:text-teal-300 rounded-xl font-bold transition flex items-center justify-center gap-2 border border-teal-200 dark:border-teal-800 shadow-sm">
+            <button onclick="openCustomPointsModal()" class="flex-1 py-3 bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-900/30 dark:hover:bg-emerald-900/50 text-emerald-800 dark:text-emerald-300 rounded-xl font-bold transition flex items-center justify-center gap-2 border border-emerald-300 dark:border-emerald-800 shadow-sm">
                 <i data-lucide="sparkles" class="w-5 h-5"></i>
                 نقاط مخصصة
             </button>
@@ -3006,10 +3480,23 @@ window.setQuranType = (type) => {
         btnHifz.className = "py-2 rounded-lg text-xs font-bold border-2 border-emerald-400 bg-emerald-100 text-emerald-700";
         btnMuraja.className = "py-2 rounded-lg text-xs font-bold border-2 border-gray-200 bg-white text-gray-500";
     } else {
-        btnMuraja.className = "py-2 rounded-lg text-xs font-bold border-2 border-blue-400 bg-blue-100 text-blue-700";
+        btnMuraja.className = "py-2 rounded-lg text-xs font-bold border-2 border-emerald-400 bg-emerald-100 text-emerald-700";
         btnHifz.className = "py-2 rounded-lg text-xs font-bold border-2 border-gray-200 bg-white text-gray-500";
     }
 };
+
+async function submitScoreWithMultiplier(criteriaId, basePoints, criteriaName, type, isMult) {
+    let multiplier = 1;
+    if (isMult) {
+        const qtyEl = document.getElementById(`mult-qty-${criteriaId}`);
+        multiplier = parseInt(qtyEl ? qtyEl.value : 1) || 1;
+    }
+    
+    const finalPoints = parseFloat(basePoints) * multiplier;
+    const finalLabel = isMult ? `${criteriaName} (${multiplier} م)` : criteriaName;
+    
+    await submitScore(criteriaId, type === 'negative' ? -Math.abs(finalPoints) : Math.abs(finalPoints), finalLabel, type);
+}
 window.updateQuranAyas = (rangeType, type) => {
     const suraNo = document.getElementById(`rate-quran-${rangeType}-sura-${type}`).value;
     const ayaSelect = document.getElementById(`rate-quran-${rangeType}-aya-${type}`);
@@ -3040,7 +3527,8 @@ async function submitScore(criteriaId, points, criteriaName, type) {
     if (!currentRateStudentId || !currentGradingCompId) return;
 
     // Get selected date
-    const dateVal = $('#grading-date').value;
+    const dateInput = document.getElementById('modal-grading-date');
+    const dateVal = dateInput && dateInput.value ? dateInput.value : ($('#grading-date') ? $('#grading-date').value : '');
     if (!dateVal) {
         showToast("يرجى اختيار التاريخ", "error");
         return;
@@ -3048,11 +3536,11 @@ async function submitScore(criteriaId, points, criteriaName, type) {
 
     const data = {
         studentId: currentRateStudentId,
-        competitionId: currentGradingCompId,
-        groupId: currentGradingGroupId,
+        competitionId: currentGradingCompId === 'DIRECT_GRADING' ? null : currentGradingCompId,
+        groupId: currentGradingGroupId || null,
         criteriaId,
         criteriaName,
-        points: parseInt(points),
+        points: parseFloat(points),
         type,
         level: state.currentLevel,
         date: dateVal,
@@ -3099,7 +3587,8 @@ async function submitScore(criteriaId, points, criteriaName, type) {
 async function submitNote() {
     if (!currentRateStudentId || !currentGradingCompId) return;
 
-    const dateVal = $('#grading-date').value;
+    const dateInput = document.getElementById('modal-grading-date');
+    const dateVal = dateInput && dateInput.value ? dateInput.value : ($('#grading-date') ? $('#grading-date').value : '');
     const noteText = $('#rate-note-text').value.trim();
     const visibility = $('#rate-note-visibility').value;
 
@@ -3113,13 +3602,13 @@ async function submitNote() {
     }
 
     let criteriaName = "ملاحظة المعلم";
-    if(visibility === 'student') criteriaName += " (للطالب فقط)";
-    else if(visibility === 'parent') criteriaName += " (لولي الأمر فقط)";
+    if(visibility === 'student') criteriaName += state.currentLevel === 'ijazat' ? " (مباشرة)" : " (للدارس فقط)";
+    else if(visibility === 'parent') criteriaName += state.currentLevel === 'ijazat' ? " (للآخرين فقط)" : " (لولي الأمر فقط)";
 
     const data = {
         studentId: currentRateStudentId,
-        competitionId: currentGradingCompId,
-        groupId: currentGradingGroupId,
+        competitionId: currentGradingCompId === 'DIRECT_GRADING' ? null : currentGradingCompId,
+        groupId: currentGradingGroupId || null,
         criteriaId: 'TEACHER_NOTE',
         criteriaName: criteriaName,
         points: 0,
@@ -3150,7 +3639,7 @@ function openResetStudentScoresModal() {
 
 async function confirmResetStudentScores() {
     if (!currentRateStudentId || !currentGradingCompId) return;
-    showToast("جاري تصفير درجات الطالب...");
+    showToast(`جاري تصفير درجات ${getLabel('student')}...`);
     
     try {
         const q = window.firebaseOps.query(
@@ -3168,7 +3657,7 @@ async function confirmResetStudentScores() {
 
         await batch.commit();
 
-        showToast("تم حذف درجات الطالب في هذه المسابقة بنجاح", "success");
+        showToast(`تم حذف درجات ${getLabel('student')} في هذه المسابقة بنجاح`, "success");
         closeModal('reset-student-scores-modal');
         closeModal('rate-student-modal');
         
@@ -3187,7 +3676,8 @@ async function confirmResetStudentScores() {
 window.submitQuranRecord = async (quranType) => {
     if (!currentRateStudentId || !currentGradingCompId) return;
 
-    const dateVal = $('#grading-date').value;
+    const dateInput = document.getElementById('modal-grading-date');
+    const dateVal = dateInput && dateInput.value ? dateInput.value : ($('#grading-date') ? $('#grading-date').value : '');
     if (!dateVal) {
         showToast("يرجى اختيار التاريخ", "error");
         return;
@@ -3249,11 +3739,11 @@ window.submitQuranRecord = async (quranType) => {
     }
     const quranSection = sectionParts.join(' | ');
     const criteriaId = quranType === 'memorization' ? 'QURAN_MEMORIZATION' : 'QURAN_REVIEW';
-    const criteriaName = quranType === 'memorization' ? 'حفظ' : 'مراجعة';
+    const criteriaName = quranType === 'memorization' ? 'حفظ أو مراجعة صغرى' : 'مراجعة أو مراجعة كبرى';
 
     const data = {
         studentId: currentRateStudentId,
-        competitionId: currentGradingCompId,
+        competitionId: currentGradingCompId === 'DIRECT_GRADING' ? null : currentGradingCompId,
         groupId: currentGradingGroupId || null,
         criteriaId,
         criteriaName,
@@ -3286,7 +3776,7 @@ window.submitQuranRecord = async (quranType) => {
         } else {
             data.createdAt = new Date();
             await window.firebaseOps.addDoc(window.firebaseOps.collection(window.db, "scores"), data);
-            showToast(quranType === 'memorization' ? "تم تسجيل الحفظ بنجاح ✨" : "تم تسجيل المراجعة بنجاح ✨", "success");
+            showToast(quranType === 'memorization' ? "تم التسجيل بنجاح ✨" : "تم التسجيل بنجاح ✨", "success");
         }
     } catch (e) {
         console.error("Submission Error:", e);
@@ -3326,7 +3816,7 @@ async function openActivityCheckModal(groupId) {
     }
 
     if (members.length === 0) {
-        list.innerHTML = '<p class="text-center text-gray-500 py-4">لا يوجد طلاب لتقييمهم</p>';
+        list.innerHTML = `<p class="text-center text-gray-500 py-4">لا يوجد ${getLabel('students')} لتقييمهم</p>`;
     } else {
         list.innerHTML = members.map(s => `
             <label class="flex items-center justify-between p-3 hover:bg-gray-50 dark:hover:bg-gray-700/50 cursor-pointer transition">
@@ -3428,7 +3918,9 @@ async function submitActivityDay() {
             const waList = $('#activity-absent-whatsapp-list');
             waList.innerHTML = absentStudents.map(s => {
                 const phone = s.studentNumber || '';
-                const msg = `نحيطكم علماً بغياب الطالب (${s.name}) عن يوم النشاط المقام اليوم في مسابقة ${comp.name}.`;
+                const msg = state.currentLevel === 'ijazat'
+                    ? `السلام عليكم أخي ${s.name}،\nتم تسجيل غيابك عن يوم النشاط في ${comp.name}.`
+                    : `نحيطكم علماً بغياب الطالب (${s.name}) عن يوم النشاط المقام اليوم في مسابقة ${comp.name}.`;
                 const url = `https://wa.me/${phone}?text=${encodeURIComponent(msg)}`;
 
                 return `
@@ -3589,7 +4081,7 @@ async function openEditCompetition(id) {
         // Populate Criteria
         $('#criteria-list').innerHTML = '';
         if (data.criteria && Array.isArray(data.criteria) && data.criteria.length > 0) {
-            data.criteria.forEach(c => addCriteriaItem(c.name, c.positivePoints, c.negativePoints));
+            data.criteria.forEach(c => addCriteriaItem(c.name, c.positivePoints, c.negativePoints, c.isMultiplier));
         } else {
             addCriteriaItem();
         }
@@ -3618,6 +4110,38 @@ function init() {
 
     applyTheme();
 
+    // Check for self-registration link
+    const urlParams = new URLSearchParams(window.location.search);
+    if (urlParams.get('register') === '1') {
+        const lvl = urlParams.get('level');
+        if (lvl && LEVELS[lvl]) {
+            window._selfRegistrationLevel = lvl;
+            $('#loading').classList.add('hidden');
+            $('#auth-overlay').classList.remove('hidden');
+            
+            // Hide other auth panels and the main card itself
+            ['main-auth-card', 'auth-home', 'student-login-panel', 'teacher-login-panel', 'parent-login-panel'].forEach(id => {
+                const el = document.getElementById(id);
+                if (el) el.classList.add('hidden');
+            });
+            
+            // Show register panel
+            const regPanel = document.getElementById('student-register-panel');
+            if (regPanel) {
+                regPanel.classList.remove('hidden');
+                
+                // Update labels dynamically based on level
+                const isAdult = lvl === 'ijazat';
+                document.getElementById('self-reg-title').textContent = isAdult ? 'تسجيل دارس جديد 📝' : 'تسجيل طالب جديد 📝';
+                document.getElementById('self-reg-name-label').textContent = 'ما اسمك؟ (الاسم الرباعي)';
+                document.getElementById('self-reg-phone-label').textContent = isAdult ? 'رقم جوالك الشخصي' : 'رقم جوال ولي أمرك';
+                document.getElementById('self-reg-id-label').textContent = isAdult ? 'رقم الهوية' : 'رقم الهوية / السجل المدني';
+                document.getElementById('self-reg-password-label').textContent = 'اختر كلمة مرور شخصية لك';
+            }
+            return; // Stop normal init
+        }
+    }
+
     // Check Persistence
     if (loadAuth()) {
         // Already logged in
@@ -3634,6 +4158,11 @@ function init() {
         // Replace initial state so Android Back button exits app from start screen
         history.replaceState({ view: startView }, '', `#${startView}`);
         router.render(startView);
+
+        // ✅ Auto-backup: check 3 seconds after teacher login
+        if (state.isTeacher) {
+            setTimeout(checkAndCreateWeeklyBackup, 3000);
+        }
     } else {
         // Needs Login (Show Auth Overlay)
         $('#loading').classList.add('hidden');
@@ -3692,6 +4221,9 @@ function startGlobalDataSync() {
     );
     window.levelSettingsUnsubscribe = window.firebaseOps.onSnapshot(qSettings, function(snap) {
         state.activeWeekDays = ['sun', 'mon', 'tue', 'wed', 'thu']; // default
+        state.hideScoresFromStudent = false; // default
+        state.enableDirectGrading = true; // default
+        state.disableLeaderboard = false; // default
         snap.forEach(function(doc) {
             const data = doc.data();
             if (data.featureName === 'week_days' && data.settings && data.settings.activeDays) {
@@ -3699,7 +4231,39 @@ function startGlobalDataSync() {
             } else if (data.activeDays && Array.isArray(data.activeDays)) {
                 state.activeWeekDays = [...data.activeDays];
             }
+            if (data.featureName === 'hide_scores' && data.isEnabled) {
+                state.hideScoresFromStudent = true;
+            }
+            if (data.featureName === 'disable_leaderboard' && data.isEnabled) {
+                state.disableLeaderboard = true;
+            }
+            if (data.featureName === 'direct_grading' && data.isEnabled === false) {
+                state.enableDirectGrading = false;
+            }
         });
+        
+        // Update Bottom Nav for Direct Grading
+        const dgNav = document.getElementById('nav-direct-grading');
+        if (dgNav) {
+            dgNav.style.display = (state.isTeacher && state.enableDirectGrading) ? 'flex' : 'none';
+        }
+    });
+
+    // 4. Transfer Requests Sync
+    if (transferRequestsUnsubscribe) transferRequestsUnsubscribe();
+    const qRequests = window.firebaseOps.query(window.firebaseOps.collection(window.db, "transfer_requests"));
+    transferRequestsUnsubscribe = window.firebaseOps.onSnapshot(qRequests, function(snap) {
+        const reqs = [];
+        snap.forEach(function(d) {
+            var data = d.data();
+            data.id = d.id;
+            // Only keep requests where this level is the sender or receiver
+            if (data.fromLevel === state.currentLevel || data.toLevel === state.currentLevel) {
+                reqs.push(data);
+            }
+        });
+        state.transferRequests = reqs;
+        if (state.currentView === 'students') updateTransferRequestsUI();
     });
 }
 
@@ -3763,24 +4327,34 @@ window.addEventListener('popstate', (event) => {
 
 
 // === COMPETITION MANAGEMENT ===
-function addCriteriaItem(name = '', pos = '', neg = '') {
+function addCriteriaItem(name = '', pos = '', neg = '', isMultiplier = false) {
     const container = document.getElementById('criteria-list');
-    if (!container) return; // Guard
-    const id = Date.now() + Math.random().toString(36).substr(2, 9);
-
+    if (!container) return; 
+    
     const div = document.createElement('div');
-    div.className = 'grid grid-cols-[1fr_auto_auto_auto] gap-2 items-center bg-gray-50 dark:bg-gray-700 p-1.5 rounded-xl mb-2';
+    div.className = 'bg-gray-50 dark:bg-gray-700 p-3 rounded-xl mb-3 border border-gray-100 dark:border-gray-600';
     div.innerHTML = `
-            <input type="text" placeholder="اسم المعيار" class="criteria-name w-full min-w-0 bg-white dark:bg-gray-600 border rounded-lg px-2 py-2 text-xs" value="${name}" required>
-            <div class="flex items-center gap-1">
-                <span class="text-[10px] font-bold text-green-600">+</span>
-                <input type="number" placeholder="+" class="criteria-pos w-11 bg-white dark:bg-gray-600 border rounded-lg px-1 py-1.5 text-xs text-center" min="1" value="${pos}" required title="نقاط المكافأة">
+        <div class="grid grid-cols-[1fr_auto] gap-2 mb-2">
+            <input type="text" placeholder="اسم المعيار" class="criteria-name w-full bg-white dark:bg-gray-600 border rounded-lg px-3 py-2 text-xs font-bold" value="${name}" required>
+            <button type="button" onclick="this.closest('.bg-gray-50').remove()" class="text-rose-400 hover:text-rose-700 p-2"><i data-lucide="trash-2" class="w-4 h-4"></i></button>
+        </div>
+        <div class="grid grid-cols-3 gap-2">
+            <div class="flex flex-col">
+                <span class="text-[9px] font-bold text-emerald-600 mb-1">زيادة (+)</span>
+                <input type="number" step="0.25" placeholder="+" class="criteria-pos w-full bg-white dark:bg-gray-600 border rounded-lg px-2 py-1.5 text-xs text-center font-bold" value="${pos}" title="نقاط المكافأة">
             </div>
-            <div class="flex items-center gap-1">
-                <span class="text-[10px] font-bold text-red-500">-</span>
-                <input type="number" placeholder="-" class="criteria-neg w-11 bg-white dark:bg-gray-600 border rounded-lg px-1 py-1.5 text-xs text-center" min="0" value="${neg}" title="نقاط الخصم">
+            <div class="flex flex-col">
+                <span class="text-[9px] font-bold text-rose-700 mb-1">خصم (-)</span>
+                <input type="number" step="0.25" placeholder="-" class="criteria-neg w-full bg-white dark:bg-gray-600 border rounded-lg px-2 py-1.5 text-xs text-center font-bold" value="${neg}" title="نقاط الخصم">
             </div>
-            <button type="button" onclick="this.parentElement.remove()" class="text-red-400 hover:text-red-600 p-1 shrink-0"><i data-lucide="trash-2" class="w-4 h-4"></i></button>
+            <div class="flex flex-col items-center justify-center pt-2">
+                <span class="text-[9px] font-bold text-gray-500 mb-1">تكرار؟</span>
+                <label class="relative inline-flex items-center cursor-pointer">
+                    <input type="checkbox" class="criteria-is-multiplier sr-only peer" ${isMultiplier ? 'checked' : ''}>
+                    <div class="w-8 h-4 bg-gray-200 peer-focus:outline-none rounded-full peer dark:bg-gray-600 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-emerald-600"></div>
+                </label>
+            </div>
+        </div>
     `;
     container.appendChild(div);
     if (window.lucide) window.lucide.createIcons();
@@ -3799,10 +4373,10 @@ async function handleSaveCompetition(e) {
         const name = document.getElementById('competition-name').value;
         const icon = document.getElementById('competition-emoji').value;
 
-        const absentExcuse = parseInt(document.getElementById('comp-absent-excuse').value) || 1;
-        const absentNoExcuse = parseInt(document.getElementById('comp-absent-no-excuse').value) || 4;
-        const activityPoints = parseInt(document.getElementById('comp-activity-points').value) || 0;
-        const activityAbsentPoints = parseInt(document.getElementById('comp-activity-absent-points').value) || 0;
+        const absentExcuse = parseFloat(document.getElementById('comp-absent-excuse').value) || 1;
+        const absentNoExcuse = parseFloat(document.getElementById('comp-absent-no-excuse').value) || 4;
+        const activityPoints = parseFloat(document.getElementById('comp-activity-points').value) || 0;
+        const activityAbsentPoints = parseFloat(document.getElementById('comp-activity-absent-points').value) || 0;
 
         // Collect Criteria
         const criteriaVals = [];
@@ -3810,8 +4384,9 @@ async function handleSaveCompetition(e) {
             criteriaVals.push({
                 id: Date.now() + Math.random().toString(36).substr(2, 9),
                 name: div.querySelector('.criteria-name').value,
-                positivePoints: parseInt(div.querySelector('.criteria-pos').value) || 0,
-                negativePoints: parseInt(div.querySelector('.criteria-neg').value) || 0
+                positivePoints: parseFloat(div.querySelector('.criteria-pos').value) || 0,
+                negativePoints: parseFloat(div.querySelector('.criteria-neg').value) || 0,
+                isMultiplier: div.querySelector('.criteria-is-multiplier').checked
             });
         });
 
@@ -3907,8 +4482,8 @@ if (document.readyState === 'loading') {
 function openAbsenceOptions() {
     // Get current competition settings
     const comp = state.competitions.find(c => c.id === currentGradingCompId);
-    const absentExcuse = comp && comp.absentExcuse ? comp.absentExcuse : 1;
-    const absentNoExcuse = comp && comp.absentNoExcuse ? comp.absentNoExcuse : 4;
+    const absentExcuse = (comp && comp.absentExcuse) ? parseFloat(comp.absentExcuse) : 1;
+    const absentNoExcuse = (comp && comp.absentNoExcuse) ? parseFloat(comp.absentNoExcuse) : 4;
 
     let modal = document.getElementById('absence-modal');
     if (!modal) {
@@ -3925,9 +4500,10 @@ function openAbsenceOptions() {
                 <i data-lucide="user-x" class="w-8 h-8"></i>
             </div>
             <h3 class="font-bold text-lg mb-2">تسجيل غياب</h3>
-            <p class="text-gray-500 text-sm mb-6"> هل غاب الطالب بعذر أم بدون عذر؟</p>
+            <p class="text-gray-500 text-sm mb-6"> ${state.currentLevel === 'ijazat' ? 'هل تعذر الحضور اليوم بعذر أم بدون؟' : 'هل غاب الطالب بعذر أم بدون عذر؟'}</p>
+
             <div class="grid grid-cols-1 gap-3">
-                <button onclick="confirmAbsence('excuse')" class="py-3 rounded-xl bg-teal-50 text-teal-700 border border-teal-200 hover:bg-teal-100 font-bold transition">
+                <button onclick="confirmAbsence('excuse')" class="py-3 rounded-xl bg-emerald-50 text-emerald-800 border border-emerald-300 hover:bg-emerald-100 font-bold transition">
                     غائب بعذر (-${absentExcuse})
                 </button>
                 <button onclick="confirmAbsence('no-excuse')" class="py-3 rounded-xl bg-red-50 text-red-700 border border-red-200 hover:bg-red-100 font-bold transition">
@@ -3947,8 +4523,8 @@ async function confirmAbsence(type) {
     // Get Competition Config
     const comp = state.competitions.find(c => c.id === currentGradingCompId);
     // Default values if not set
-    const excusePoints = parseInt((comp && comp.absentExcuse) ? comp.absentExcuse : 1);
-    const noExcusePoints = parseInt((comp && comp.absentNoExcuse) ? comp.absentNoExcuse : 4);
+    const excusePoints = parseFloat((comp && comp.absentExcuse) ? comp.absentExcuse : 1);
+    const noExcusePoints = parseFloat((comp && comp.absentNoExcuse) ? comp.absentNoExcuse : 4);
 
     const points = type === 'excuse' ? -excusePoints : -noExcusePoints;
     const label = type === 'excuse' ? 'غائب بعذر' : 'غائب بدون عذر';
@@ -3963,7 +4539,10 @@ async function confirmAbsence(type) {
     var student = state.students.find(function (s) { return s.id === currentRateStudentId; });
     if (student && student.studentNumber) {
         var phone = student.studentNumber;
-        var msg = "السلام عليكم ولي أمر الطالب " + student.name + "،\nتم تسجيل غياب للطالب اليوم (" + label + ").\nنرجو الحرص على الحضور.";
+        var msg = state.currentLevel === 'ijazat' 
+            ? "السلام عليكم يا أخي " + student.name + "،\nتم تسجيل غياب لك اليوم (" + label + ").\nنرجو الحرص على الحضور والمتابعة."
+            : "السلام عليكم ولي أمر الطالب " + student.name + "،\nتم تسجيل غياب للطالب اليوم (" + label + ").\nنرجو الحرص على الحضور.";
+
         var url = "https://wa.me/" + phone + "?text=" + encodeURIComponent(msg);
         window.open(url, '_blank');
     }
@@ -3974,7 +4553,7 @@ async function generateWeeklyReport() {
     if (!student) return;
 
     if (!student.studentNumber) {
-        showToast("لا يوجد رقم هاتف لولي الأمر", "error");
+        showToast(state.currentLevel === 'ijazat' ? "لا يوجد رقم جوال للتواصل" : "لا يوجد رقم هاتف لولي الأمر", "error");
         return;
     }
 
@@ -4018,12 +4597,13 @@ async function generateWeeklyReport() {
             const data = d.data();
             activityLog[data.date] = data.points;
             activityDaysTaken++;
-            totalActivityPossible += (parseInt(data.points) || 0);
+            totalActivityPossible += (parseFloat(data.points) || 0);
         });
 
         // Calculate Totals per Criteria
         let reportText = `📊 *تقرير الفترة السابقة* 📊\n`;
-        reportText += `👤 الطالب: ${student.name}\n`;
+        reportText += `👤 ال${getLabel('student')}: ${student.name}\n`;
+
         reportText += `📅 الفترة: ${dateStrings[0]} إلى ${dateStrings[dateStrings.length - 1]}\n`;
         if (activityDaysTaken > 0) {
             reportText += `🎪 تم إقامة نشاط (${activityDaysTaken} يوم)\n`;
@@ -4043,7 +4623,7 @@ async function generateWeeklyReport() {
                 const earned = cScores.reduce((sum, s) => sum + s.points, 0);
 
                 // Possible: Criteria Points * Normal Days
-                const possible = (parseInt(c.positivePoints) || 0) * normalDaysCount;
+                const possible = (parseFloat(c.positivePoints) || 0) * normalDaysCount;
 
                 reportText += `🔹 ${c.name}: ${earned} / ${possible}\n`;
 
@@ -4092,7 +4672,7 @@ async function generateWeeklyReport() {
         // Add Custom Points (CUSTOM_*) if any
         const customScores = scores.filter(s => s.criteriaId && s.criteriaId.startsWith('CUSTOM_'));
         if (customScores.length > 0) {
-            const customTotal = customScores.reduce((sum, s) => sum + (parseInt(s.points) || 0), 0);
+            const customTotal = customScores.reduce((sum, s) => sum + (parseFloat(s.points) || 0), 0);
             reportText += `⚡ نقاط مخصصة: ${customTotal}\n`;
             customScores.forEach(cs => {
                 const sign = cs.points > 0 ? '+' : '';
@@ -4107,12 +4687,12 @@ async function generateWeeklyReport() {
             const memScores = quranScores.filter(s => s.criteriaId === 'QURAN_MEMORIZATION');
             const revScores = quranScores.filter(s => s.criteriaId === 'QURAN_REVIEW');
             if (memScores.length > 0) {
-                const memTotal = memScores.reduce((sum, s) => sum + (parseInt(s.points) || 0), 0);
+                const memTotal = memScores.reduce((sum, s) => sum + (parseFloat(s.points) || 0), 0);
                 reportText += `📖 حفظ القرآن: ${memTotal}\n`;
                 totalEarned += memTotal;
             }
             if (revScores.length > 0) {
-                const revTotal = revScores.reduce((sum, s) => sum + (parseInt(s.points) || 0), 0);
+                const revTotal = revScores.reduce((sum, s) => sum + (parseFloat(s.points) || 0), 0);
                 reportText += `📗 مراجعة القرآن: ${revTotal}\n`;
                 totalEarned += revTotal;
             }
@@ -4120,7 +4700,7 @@ async function generateWeeklyReport() {
 
         reportText += `------------------\n`;
         reportText += `✨ *المجموع النهائي: ${totalEarned} / ${totalPossible}*\n`;
-        reportText += `\nشاكرين تعاونكم 🌹`;
+        reportText += `\n${state.currentLevel === 'ijazat' ? 'شاكرين جهودكم 🌹' : 'شاكرين تعاونكم 🌹'}`;
 
         // Send
         const url = `https://wa.me/${student.studentNumber}?text=${encodeURIComponent(reportText)}`;
@@ -4356,7 +4936,7 @@ async function openStudentReport(studentId) {
     }
 
     if (!student) {
-        container.innerHTML = '<p class="text-center text-red-500 p-8">الطالب غير موجود</p>';
+        container.innerHTML = `<p class="text-center text-red-500 p-8">${getLabel('student')} غير موجود</p>`;
         return;
     }
 
@@ -4483,6 +5063,7 @@ async function openStudentReport(studentId) {
     }
 
     const isStudent = (!state.isParent && !state.isTeacher);
+    const _hideAgg = (state.hideScoresFromStudent && isStudent);
 
     let topButtonsHTML = '';
     if (state.isParent) {
@@ -4494,9 +5075,9 @@ async function openStudentReport(studentId) {
         `;
     } else if (state.isTeacher) {
         topButtonsHTML = `
-            <button onclick="renderStudents()" class="flex items-center gap-2 text-gray-500 hover:text-teal-600 mb-4 font-bold">
+            <button onclick="renderStudents()" class="flex items-center gap-2 text-gray-500 hover:text-emerald-700 mb-4 font-bold">
                 <i data-lucide="arrow-right" class="w-4 h-4"></i>
-                العودة لقائمة الطلاب
+                العودة لقائمة ${getLabel('students')}
             </button>
         `;
     } else if (isStudent) {
@@ -4508,20 +5089,21 @@ async function openStudentReport(studentId) {
             ${topButtonsHTML}
 
             <!-- Student Header -->
-            <div class="bg-gradient-to-r ${isStudent ? 'from-teal-600 to-teal-800' : 'from-teal-500 to-teal-600'} rounded-2xl p-6 mb-6 text-white shadow-lg">
+            <div class="bg-gradient-to-r ${isStudent ? 'from-emerald-700 to-emerald-800' : 'from-emerald-600 to-emerald-700'} rounded-2xl p-6 mb-6 text-white shadow-lg">
                 <div class="flex items-center gap-4">
                     <div class="w-20 h-20 bg-white rounded-full flex items-center justify-center text-3xl border-4 border-white/50 overflow-hidden">
                         ${iconHtml}
                     </div>
                     <div>
                         <h1 class="text-xl font-bold">${student.name}</h1>
-                        <p class="text-teal-100 text-sm">${level.emoji} ${level.name}</p>
-                        <p class="text-teal-100 text-xs mt-1 flex items-center gap-1"><i data-lucide="users" class="w-3 h-3"></i> المجموعة: ${groupName}</p>
+                        <p class="text-emerald-100 text-sm">${level.emoji} ${level.name}</p>
+                        <p class="text-emerald-100 text-xs mt-1 flex items-center gap-1"><i data-lucide="users" class="w-3 h-3"></i> المجموعة: ${groupName}</p>
                     </div>
                 </div>
             </div>
 
             <!-- Quick Stats -->
+            ${!_hideAgg ? `
             <div class="grid grid-cols-2 gap-3 mb-4">
                 <div class="bg-white dark:bg-gray-800 rounded-xl p-3 text-center shadow-sm border">
                     <p class="text-2xl font-bold ${totalPoints >= 0 ? 'text-green-600' : 'text-red-600'}">${totalPoints}</p>
@@ -4535,12 +5117,13 @@ async function openStudentReport(studentId) {
             <div id="student-ranking-card" class="mb-6">
                 <div class="text-center py-2 text-gray-400 text-xs">جاري حساب الترتيب...</div>
             </div>
+            ` : ''}
 
             <!-- Memorization Plan -->
             ${student.memorizationPlan || student.reviewPlan ? `
             <div class="bg-white dark:bg-gray-800 rounded-2xl p-4 mb-4 shadow-sm border">
-                <h3 class="font-bold mb-3 flex items-center gap-2"><i data-lucide="book-open" class="w-4 h-4 text-teal-600"></i> الخطة</h3>
-                ${student.memorizationPlan ? `<p class="text-sm mb-2"><span class="font-bold text-teal-600">الحفظ:</span> ${student.memorizationPlan}</p>` : ''}
+                <h3 class="font-bold mb-3 flex items-center gap-2"><i data-lucide="book-open" class="w-4 h-4 text-emerald-700"></i> الخطة</h3>
+                ${student.memorizationPlan ? `<p class="text-sm mb-2"><span class="font-bold text-emerald-700">الحفظ:</span> ${student.memorizationPlan}</p>` : ''}
                 ${student.reviewPlan ? `<p class="text-sm"><span class="font-bold text-purple-600">المراجعة:</span> ${student.reviewPlan}</p>` : ''}
             </div>
             ` : ''}
@@ -4563,9 +5146,9 @@ async function openStudentReport(studentId) {
             <div class="bg-white dark:bg-gray-800 rounded-2xl p-4 mb-4 shadow-sm border">
                 <h3 class="font-bold mb-3 flex items-center gap-2"><i data-lucide="calendar-x" class="w-4 h-4 text-orange-600"></i> تفاصيل الغياب</h3>
                 <div class="grid grid-cols-2 gap-3">
-                    <div onclick="showAbsenceDates('excuse')" class="bg-teal-50 dark:bg-teal-900/30 rounded-xl p-3 text-center cursor-pointer hover:ring-2 hover:ring-teal-400 transition">
-                        <p class="text-xl font-bold text-teal-700 dark:text-teal-400">${absenceWithExcuse}</p>
-                        <p class="text-xs text-teal-600">بعذر ▸</p>
+                    <div onclick="showAbsenceDates('excuse')" class="bg-emerald-50 dark:bg-emerald-900/30 rounded-xl p-3 text-center cursor-pointer hover:ring-2 hover:ring-emerald-400 transition">
+                        <p class="text-xl font-bold text-emerald-800 dark:text-emerald-400">${absenceWithExcuse}</p>
+                        <p class="text-xs text-emerald-700">بعذر ▸</p>
                     </div>
                     <div onclick="showAbsenceDates('noexcuse')" class="bg-red-50 dark:bg-red-900/30 rounded-xl p-3 text-center cursor-pointer hover:ring-2 hover:ring-red-400 transition">
                         <p class="text-xl font-bold text-red-700 dark:text-red-400">${absenceNoExcuse}</p>
@@ -4585,8 +5168,10 @@ async function openStudentReport(studentId) {
         window.renderStudentCalendar(window._currentCalendarYear, window._currentCalendarMonth);
     }, 100);
 
-    // Calculate ranking asynchronously
-    calculateStudentRanking(studentId, student.level, totalPoints);
+    // Calculate ranking asynchronously (skip if scores are hidden for student)
+    if (!_hideAgg) {
+        calculateStudentRanking(studentId, student.level, totalPoints);
+    }
 }
 
 // Calculate student ranking among peers
@@ -4632,7 +5217,7 @@ async function calculateStudentRanking(studentId, level, studentTotal) {
         
         scoresSnap.forEach(d => {
             const sc = d.data();
-            const pts = parseInt(sc.points) || 0;
+            const pts = parseFloat(sc.points) || 0;
             if (totalsMap.hasOwnProperty(sc.studentId)) {
                 totalsMap[sc.studentId] += pts;
             }
@@ -4706,7 +5291,7 @@ window.renderStudentCalendar = (year, month) => {
     scores.forEach(s => {
         if (!s.date) return;
         if (!scoresByDate[s.date]) scoresByDate[s.date] = { points: 0, criteria: [], hasQuran: false, quranTypes: [], notes: [] };
-        scoresByDate[s.date].points += (parseInt(s.points) || 0);
+        scoresByDate[s.date].points += (parseFloat(s.points) || 0);
         scoresByDate[s.date].criteria.push(s.criteriaName || (s.criteriaId === 'ABSENCE_RECORD' ? 'غياب' : 'أخرى'));
         
         if (s.criteriaId === 'TEACHER_NOTE' && s.noteText) {
@@ -4770,22 +5355,22 @@ window.renderStudentCalendar = (year, month) => {
             const hasReview = plannedTasks.some(p => p.planType === 'review');
             
             if (!hasData) {
-                dayClass = 'bg-teal-50 dark:bg-teal-900/10 border border-teal-200 dark:border-teal-800 rounded-lg p-1 text-center min-h-[45px] flex flex-col items-center justify-center cursor-pointer hover:ring-2 hover:ring-teal-400 transition';
+                dayClass = 'bg-emerald-50 dark:bg-emerald-900/10 border border-emerald-300 dark:border-emerald-800 rounded-lg p-1 text-center min-h-[45px] flex flex-col items-center justify-center cursor-pointer hover:ring-2 hover:ring-emerald-400 transition';
             }
             
             let dots = '';
-            if (hasHifz) dots += `<span class="w-1.5 h-1.5 rounded-full bg-teal-500"></span>`;
+            if (hasHifz) dots += `<span class="w-1.5 h-1.5 rounded-full bg-emerald-600"></span>`;
             if (hasReview) dots += `<span class="w-1.5 h-1.5 rounded-full bg-purple-500"></span>`;
             dayContentTags.push(`<div class="flex gap-1 mt-1">${dots}</div>`);
         }
 
         if (dayData || plannedTasks.length > 0) {
-            dayContent = `<span class="text-xs font-bold ${hasData ? (dayClass.includes('red') ? 'text-red-700 dark:text-red-400' : (dayClass.includes('green') ? 'text-green-700 dark:text-green-400' : 'text-orange-700 dark:text-orange-400')) : 'text-teal-800 dark:text-teal-300'}">${i}</span>`;
+            dayContent = `<span class="text-xs font-bold ${hasData ? (dayClass.includes('red') ? 'text-red-700 dark:text-red-400' : (dayClass.includes('green') ? 'text-green-700 dark:text-green-400' : 'text-orange-700 dark:text-orange-400')) : 'text-emerald-800 dark:text-emerald-300'}">${i}</span>`;
             dayContent += `<div class="flex flex-col items-center justify-center">` + dayContentTags.join('') + `</div>`;
             calendarDaysHTML += `<div class="${dayClass}" onclick="showDayDetails('${dateStr}')">${dayContent}</div>`;
         } else if (dateStr === todayDate.toISOString().split('T')[0]) {
-             dayClass = 'bg-blue-50 dark:bg-blue-900/30 border-2 border-blue-400 dark:border-blue-600 rounded-lg p-1 text-center min-h-[45px] flex flex-col items-center justify-center relative';
-             dayContent = `<span class="text-xs font-bold text-blue-700 dark:text-blue-400">${i}</span>`;
+             dayClass = 'bg-emerald-50 dark:bg-emerald-900/30 border-2 border-emerald-400 dark:border-emerald-600 rounded-lg p-1 text-center min-h-[45px] flex flex-col items-center justify-center relative';
+             dayContent = `<span class="text-xs font-bold text-emerald-700 dark:text-emerald-400">${i}</span>`;
              calendarDaysHTML += `<div class="${dayClass}" onclick="showDayDetails('${dateStr}')">${dayContent}</div>`;
         } else {
              calendarDaysHTML += `<div class="${dayClass}">${dayContent}</div>`;
@@ -4797,11 +5382,11 @@ window.renderStudentCalendar = (year, month) => {
 
     container.innerHTML = `
         <div class="flex justify-between items-center mb-4">
-            <h3 class="font-bold flex items-center gap-2"><i data-lucide="calendar" class="w-4 h-4 text-blue-600"></i> التقويم الشهري</h3>
+            <h3 class="font-bold flex items-center gap-2"><i data-lucide="calendar" class="w-4 h-4 text-emerald-600"></i> التقويم الشهري</h3>
             <div class="flex items-center gap-2">
-                <button onclick="changeCalendarMonth(-1)" class="w-6 h-6 flex items-center justify-center bg-gray-100 dark:bg-gray-700 rounded-full hover:bg-teal-100 text-teal-600 transition"><i data-lucide="chevron-right" class="w-4 h-4"></i></button>
+                <button onclick="changeCalendarMonth(-1)" class="w-6 h-6 flex items-center justify-center bg-gray-100 dark:bg-gray-700 rounded-full hover:bg-emerald-100 text-emerald-700 transition"><i data-lucide="chevron-right" class="w-4 h-4"></i></button>
                 <span class="text-xs font-bold text-gray-500 bg-gray-100 dark:bg-gray-700 px-3 py-1 rounded-full">${monthName} ${year}</span>
-                <button onclick="changeCalendarMonth(1)" class="w-6 h-6 flex items-center justify-center bg-gray-100 dark:bg-gray-700 rounded-full hover:bg-teal-100 text-teal-600 transition"><i data-lucide="chevron-left" class="w-4 h-4"></i></button>
+                <button onclick="changeCalendarMonth(1)" class="w-6 h-6 flex items-center justify-center bg-gray-100 dark:bg-gray-700 rounded-full hover:bg-emerald-100 text-emerald-700 transition"><i data-lucide="chevron-left" class="w-4 h-4"></i></button>
             </div>
         </div>
         <div class="space-y-1">
@@ -4839,11 +5424,14 @@ window.showDayDetails = (dateStr) => {
 
             let badge = '';
             if (isQuran) {
-                badge = `<span class="text-xs font-bold px-2 py-1 rounded-lg bg-teal-100 text-teal-700">${s.criteriaId === 'QURAN_MEMORIZATION' ? '📝 حفظ' : '🔄 مراجعة'}</span>`;
+                badge = `<span class="text-xs font-bold px-2 py-1 rounded-lg bg-emerald-100 text-emerald-800">${s.criteriaId === 'QURAN_MEMORIZATION' ? '📝 حفظ' : '🔄 مراجعة'}</span>`;
             } else if (isAbsence) {
                 badge = `<span class="text-xs font-bold px-2 py-1 rounded-lg bg-red-100 text-red-700">غياب ❌</span>`;
             } else if (isNote) {
                 badge = `<span class="text-xs font-bold px-2 py-1 rounded-lg bg-yellow-100 text-yellow-800">💬 ملاحظة</span>`;
+            } else if (s.points === 0) {
+                // For direct grading custom items
+                badge = `<span class="text-xs font-bold px-2 py-1 rounded-lg bg-gray-100 text-gray-800">✓ تم الرصد</span>`;
             } else {
                 badge = `<span class="text-sm font-bold px-2 py-1 rounded-lg ${isPositive ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}">${isPositive ? '+' : ''}${s.points}</span>`;
             }
@@ -4866,10 +5454,10 @@ window.showDayDetails = (dateStr) => {
                 </div>
                 ` : ''}
                 ${s.quranSection ? `
-                <div class="mt-2 p-3 bg-teal-50 dark:bg-teal-900/20 border border-teal-100 dark:border-teal-800 rounded-lg">
-                    <p class="text-xs font-bold text-teal-700 dark:text-teal-400 mb-1">📖 المقطع:</p>
+                <div class="mt-2 p-3 bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-100 dark:border-emerald-800 rounded-lg">
+                    <p class="text-xs font-bold text-emerald-800 dark:text-emerald-400 mb-1">📖 المقطع:</p>
                     <p class="text-xs text-gray-600 dark:text-gray-400 mb-2 font-bold">${s.quranSection}</p>
-                    ${s.quranGrade ? `<p class="text-xs font-bold mb-2 px-2 py-1 rounded-lg inline-block ${s.quranGrade === 'ممتاز' ? 'bg-green-100 text-green-700' : s.quranGrade === 'جيد جداً' ? 'bg-blue-100 text-blue-700' : s.quranGrade === 'مقبول' ? 'bg-yellow-100 text-yellow-700' : s.quranGrade === 'سيء' ? 'bg-orange-100 text-orange-700' : 'bg-red-100 text-red-700'}">🏅 التقدير: ${s.quranGrade}</p>` : ''}
+                    ${s.quranGrade ? `<p class="text-xs font-bold mb-2 px-2 py-1 rounded-lg inline-block ${s.quranGrade === 'ممتاز' ? 'bg-green-100 text-green-700' : s.quranGrade === 'جيد جداً' ? 'bg-emerald-100 text-emerald-700' : s.quranGrade === 'مقبول' ? 'bg-yellow-100 text-yellow-700' : s.quranGrade === 'سيء' ? 'bg-orange-100 text-orange-700' : 'bg-red-100 text-red-700'}">🏅 التقدير: ${s.quranGrade}</p>` : ''}
                     <button onclick="window._openQuranForScore('${s.id}')" class="w-full py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold transition flex items-center justify-center gap-2">
                         <i data-lucide="book-open" class="w-4 h-4"></i> عرض الآيات
                     </button>
@@ -4999,7 +5587,7 @@ window.showDayDetails = (dateStr) => {
     modal.innerHTML = `
         <div class="bg-white dark:bg-gray-800 rounded-3xl w-full max-w-sm p-6 shadow-2xl max-h-[85vh] overflow-y-auto">
             <div class="flex justify-between items-center mb-4 border-b border-gray-100 dark:border-gray-700 pb-3">
-                <h3 class="font-bold text-lg text-blue-700 dark:text-blue-400">📅 تفاصيل يوم ${dateStr}</h3>
+                <h3 class="font-bold text-lg text-emerald-700 dark:text-emerald-400">📅 تفاصيل يوم ${dateStr}</h3>
                 <button onclick="document.getElementById('day-scores-modal').remove()" class="text-gray-400 hover:text-gray-600 bg-gray-50 dark:bg-gray-700 rounded-full p-2">
                     <i data-lucide="x" class="w-4 h-4"></i>
                 </button>
@@ -5014,7 +5602,9 @@ function contactTeacher(studentName, teacherPhone) {
     let messageText = "";
     
     if (state.isParent) {
-        messageText = `السلام عليكم ورحمة الله وبركاته.. أنا ولي أمر الطالب (${studentName})\nكنت أريد أن أستفسر منك عن بعض الأمور`;
+        messageText = state.currentLevel === 'ijazat'
+            ? `السلام عليكم ورحمة الله وبركاته.. أنا أخوكم الدارس (${studentName})\nكنت أريد أن أستفسر عن بعض الأمور`
+            : `السلام عليكم ورحمة الله وبركاته.. أنا ولي أمر الطالب (${studentName})\nكنت أريد أن أستفسر منك عن بعض الأمور`;
     } else {
         messageText = `السلام عليكم ورحمة الله وبركاته`;
     }
@@ -5075,9 +5665,9 @@ function showAbsenceDates(type) {
     const emoji = type === 'excuse' ? '✅' : '❌';
 
     // Use pre-built Tailwind classes instead of dynamic interpolation
-    const bgCard = type === 'excuse' ? 'bg-teal-50 dark:bg-teal-900/20 border-teal-100 dark:border-teal-800' : 'bg-red-50 dark:bg-red-900/20 border-red-100 dark:border-red-800';
-    const bgBadge = type === 'excuse' ? 'bg-teal-100 dark:bg-teal-900 text-teal-600 dark:text-teal-400' : 'bg-red-100 dark:bg-red-900 text-red-600 dark:text-red-400';
-    const textColor = type === 'excuse' ? 'text-teal-600 dark:text-teal-400' : 'text-red-600 dark:text-red-400';
+    const bgCard = type === 'excuse' ? 'bg-emerald-50 dark:bg-emerald-900/20 border-emerald-100 dark:border-emerald-800' : 'bg-red-50 dark:bg-red-900/20 border-red-100 dark:border-red-800';
+    const bgBadge = type === 'excuse' ? 'bg-emerald-100 dark:bg-emerald-900 text-emerald-700 dark:text-emerald-400' : 'bg-red-100 dark:bg-red-900 text-red-600 dark:text-red-400';
+    const textColor = type === 'excuse' ? 'text-emerald-700 dark:text-emerald-400' : 'text-red-600 dark:text-red-400';
 
     if (!records || records.length === 0) {
         showToast("لا يوجد أيام غياب مسجلة", "error");
@@ -5167,13 +5757,14 @@ async function performResetCompetition() {
 }
 
 async function deleteGroup(groupId) {
-    toggleModal('delete-modal', true);
+    toggleModal('delete-modal-v2', true);
 
-    document.getElementById('confirm-delete-btn').onclick = async () => {
+    const btn = document.getElementById('confirm-delete-btn-v2');
+    if (btn) btn.onclick = async () => {
         try {
             await window.firebaseOps.deleteDoc(window.firebaseOps.doc(window.db, "groups", groupId));
             showToast("تم حذف المجموعة بنجاح");
-            closeModal('delete-modal');
+            closeModal('delete-modal-v2');
             // Reload groups list
             if (typeof fetchGroupsForCompetition === 'function' && typeof currentManageCompId !== 'undefined') {
                 fetchGroupsForCompetition(currentManageCompId);
@@ -5225,8 +5816,8 @@ updateStudentsListUI = function (filteredList) {
         list.innerHTML = `
             <div class="flex flex-col items-center justify-center py-12 text-gray-400">
                 <i data-lucide="users" class="w-12 h-12 mb-3 opacity-20"></i>
-                <p class="text-sm font-medium">لا يوجد طلاب حتى الآن</p>
-                ${state.isTeacher ? '<p class="text-xs mt-1">اضغط على "جديد" لإضافة طلاب</p>' : ''}
+                <p class="text-sm font-medium">لا يوجد ${getLabel('students')} حتى الآن</p>
+                ${state.isTeacher ? `<p class="text-xs mt-1">اضغط على "جديد" لإضافة ${getLabel('students')}</p>` : ''}
             </div>
         `;
         lucide.createIcons();
@@ -5252,7 +5843,7 @@ updateStudentsListUI = function (filteredList) {
                 </div>
             </div>
             <div class="flex gap-1 shrink-0">
-                <button onclick="event.stopPropagation(); openEditStudent('${student.id}')" class="p-2 text-gray-400 hover:text-teal-600 hover:bg-teal-50 dark:hover:bg-teal-900/20 rounded-lg transition" title="تعديل">
+                <button onclick="event.stopPropagation(); openEditStudent('${student.id}')" class="p-2 text-gray-400 hover:text-emerald-700 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 rounded-lg transition" title="تعديل">
                     <i data-lucide="edit-2" class="w-4 h-4"></i>
                 </button>
                 ${state.isTeacher ? `
@@ -5283,7 +5874,7 @@ function downloadXLSX(filename, worksheets) {
 }
 
 async function exportStudentsXLSX() {
-    showToast("جاري تجهيز ملف الطلاب...");
+    showToast(`جاري تجهيز ملف ${getLabel('students')}...`);
     try {
         const q = window.firebaseOps.query(
             window.firebaseOps.collection(window.db, "students"),
@@ -5298,17 +5889,18 @@ async function exportStudentsXLSX() {
         });
 
         if (students.length === 0) {
-            showToast("لا يوجد طلاب للتصدير", "error");
+        showToast(`لا يوجد ${getLabel('students')} للتصدير`, "error");
             return;
         }
 
         const levelName = LEVELS[state.currentLevel] ? LEVELS[state.currentLevel].name : state.currentLevel;
         
         // Build rows
+        const phoneHeader = state.currentLevel === 'ijazat' ? 'رقم الجوال' : 'جوال ولي الأمر';
         const rows = students.map((s, i) => ({
             '#': i + 1,
             'الاسم': s.name || '',
-            'جوال ولي الأمر': s.parentPhone || '',
+            [phoneHeader]: s.parentPhone || '',
             'المرحلة': levelName,
             'كلمة المرور': s.password || 'لم يتم التعيين',
             'رقم الهوية': s.nationalId || s.national_id || '',
@@ -5316,7 +5908,7 @@ async function exportStudentsXLSX() {
             'تاريخ الإضافة': s.createdAt ? new Date(s.createdAt).toLocaleDateString('ar-SA') : ''
         }));
 
-        const ws = XLSX.utils.json_to_sheet(rows, { header: ['#', 'الاسم', 'جوال ولي الأمر', 'المرحلة', 'كلمة المرور', 'رقم الهوية', 'آخر اختبار جمعية', 'تاريخ الإضافة'] });
+        const ws = XLSX.utils.json_to_sheet(rows, { header: ['#', 'الاسم', phoneHeader, 'المرحلة', 'كلمة المرور', 'رقم الهوية', 'آخر اختبار جمعية', 'تاريخ الإضافة'] });
         
         // Set column widths
         ws['!cols'] = [
@@ -5485,7 +6077,7 @@ async function exportScoresXLSX(startDateStr, endDateStr) {
             // Skip excluded criteria
             if (cName.includes('حفظ قرآن') || cName.includes('مراجعة قرآن') || cName.includes('مراجعه قرآن') || cName.includes('ملاحظة المعلم')) return;
 
-            const pts = parseInt(s.points) || 0;
+            const pts = parseFloat(s.points) || 0;
             
             if (pts > 0) summaryMap[s.studentId].positive += pts;
             else if (pts < 0) summaryMap[s.studentId].negative += Math.abs(pts);
@@ -5576,7 +6168,7 @@ async function exportScoresXLSX(startDateStr, endDateStr) {
         const detailRows = scores.map(s => ({
             'اسم الطالب': summaryMap[s.studentId] ? summaryMap[s.studentId].name : 'غير معروف',
             'المعيار': s.criteriaName || s.criteriaId || '',
-            'النقاط': parseInt(s.points) || 0,
+            'النقاط': parseFloat(s.points) || 0,
             'النوع': s.type === 'positive' ? 'إيجابي' : (s.type === 'negative' ? 'سلبي' : s.type),
             'التاريخ': s.date || ''
         }));
@@ -5796,17 +6388,17 @@ async function openStatsModal() {
         container.innerHTML = `
             <!-- Summary Cards -->
             <div class="grid grid-cols-2 gap-3 mb-6">
-                <div class="bg-teal-50 dark:bg-teal-900/20 rounded-xl p-3 text-center border border-teal-100 dark:border-teal-800">
-                    <p class="text-2xl font-bold text-teal-600">${totalStudents}</p>
-                    <p class="text-xs text-teal-700 dark:text-teal-400">طالب</p>
+                <div class="bg-emerald-50 dark:bg-emerald-900/20 rounded-xl p-3 text-center border border-emerald-100 dark:border-emerald-800">
+                    <p class="text-2xl font-bold text-emerald-700">${totalStudents}</p>
+                    <p class="text-xs text-emerald-800 dark:text-emerald-400">طالب</p>
                 </div>
                 <div class="bg-green-50 dark:bg-green-900/20 rounded-xl p-3 text-center border border-green-100 dark:border-green-800">
                     <p class="text-2xl font-bold text-green-600">${totalPoints}</p>
                     <p class="text-xs text-green-700 dark:text-green-400">إجمالي النقاط</p>
                 </div>
-                <div class="bg-blue-50 dark:bg-blue-900/20 rounded-xl p-3 text-center border border-blue-100 dark:border-blue-800">
-                    <p class="text-2xl font-bold text-blue-600">${totalScoreRecords}</p>
-                    <p class="text-xs text-blue-700 dark:text-blue-400">تقييم مسجل</p>
+                <div class="bg-emerald-50 dark:bg-emerald-900/20 rounded-xl p-3 text-center border border-emerald-100 dark:border-emerald-800">
+                    <p class="text-2xl font-bold text-emerald-600">${totalScoreRecords}</p>
+                    <p class="text-xs text-emerald-700 dark:text-emerald-400">تقييم مسجل</p>
                 </div>
                 <div class="bg-orange-50 dark:bg-orange-900/20 rounded-xl p-3 text-center border border-orange-100 dark:border-orange-800">
                     <p class="text-2xl font-bold text-orange-600">${absences}</p>
@@ -5833,7 +6425,7 @@ async function openStatsModal() {
 
         // Draw Charts
         setTimeout(() => {
-            drawBarChart('students-chart', ranked.map(s => s.name), ranked.map(s => s.total), '#0d9488');
+            drawBarChart('students-chart', ranked.map(s => s.name), ranked.map(s => s.total), '#064e3b');
             drawBarChart('daily-chart', Object.keys(dailyData).map(d => d.slice(5)), Object.values(dailyData), '#f59e0b');
         }, 100);
 
@@ -6064,7 +6656,7 @@ function openCustomPointsModal(isGroup = false) {
         <div class="bg-white dark:bg-gray-800 rounded-2xl w-full max-w-sm p-6 shadow-2xl flex flex-col">
             <div class="flex justify-between items-center mb-6 border-b pb-4 border-gray-100 dark:border-gray-700">
                 <h3 class="font-bold text-lg flex items-center gap-2">
-                    <i data-lucide="sparkles" class="w-5 h-5 text-teal-600"></i>
+                    <i data-lucide="sparkles" class="w-5 h-5 text-emerald-700"></i>
                     ${titleText}
                 </h3>
                 <button onclick="closeModal('custom-points-modal')" class="text-gray-400 hover:text-gray-600 p-1 bg-gray-50 dark:bg-gray-700 rounded-full"><i data-lucide="x" class="w-4 h-4"></i></button>
@@ -6074,19 +6666,19 @@ function openCustomPointsModal(isGroup = false) {
                 <div>
                     <label class="block text-sm font-bold mb-2">سبب التقييم</label>
                     <input type="text" id="custom-points-reason" required placeholder="مثال: مشاركة متميزة، سلوك سيء..." 
-                        class="w-full bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl px-4 py-3 focus:outline-none focus:border-teal-500">
+                        class="w-full bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl px-4 py-3 focus:outline-none focus:border-emerald-600">
                 </div>
                 
                 <div>
                     <label class="block text-sm font-bold mb-2">عدد النقاط</label>
-                    <input type="number" id="custom-points-value" required placeholder="10" 
-                        class="w-full bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl px-4 py-3 text-center text-2xl font-bold focus:outline-none focus:border-teal-500" dir="ltr">
+                    <input type="number" id="custom-points-value" required placeholder="10" step="0.25"
+                        class="w-full bg-gray-50 dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-xl px-4 py-3 text-center text-2xl font-bold focus:outline-none focus:border-emerald-600" dir="ltr">
                     <p class="text-xs text-gray-500 mt-2 text-center">أدخل رقماً موجباً للزيادة (5) أو سالباً للخصم (-3)</p>
                 </div>
 
                 <div class="flex gap-3 pt-4">
                     <button type="button" onclick="closeModal('custom-points-modal')" class="flex-1 py-3 rounded-xl bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 font-medium transition">إلغاء</button>
-                    <button type="submit" class="flex-1 py-3 bg-teal-600 text-white rounded-xl font-bold hover:bg-teal-700 shadow-lg transition">تأكيد الرصد</button>
+                    <button type="submit" class="flex-1 py-3 bg-emerald-700 text-white rounded-xl font-bold hover:bg-emerald-800 shadow-lg transition">تأكيد الرصد</button>
                 </div>
             </form>
         </div>
@@ -6099,7 +6691,7 @@ async function submitCustomPoints(e) {
     e.preventDefault();
     const reasonStr = document.getElementById('custom-points-reason').value;
     const pointsStr = document.getElementById('custom-points-value').value;
-    const points = parseInt(pointsStr);
+    const points = parseFloat(pointsStr);
     
     if(!reasonStr || isNaN(points)) {
         showToast("الرجاء التحقق من البيانات المطلوبة", "error");
@@ -6148,7 +6740,7 @@ async function submitCustomPoints(e) {
             const scoreData = {
                 studentId: sid,
                 competitionId: compId,
-                groupId: currentGradingGroupId || '',
+                groupId: currentGradingGroupId || null,
                 criteriaId: criteriaIdStr,
                 criteriaName: 'تقييم مخصص: ' + reasonStr,
                 points: points,
@@ -6232,7 +6824,7 @@ function openGroupPointsModal() {
 
                 <div>
                     <label class="block text-sm font-bold mb-2">عدد النقاط</label>
-                    <input type="number" id="group-points-value" required placeholder="10"
+                    <input type="number" id="group-points-value" required placeholder="10" step="0.25"
                         class="w-full bg-gray-50 dark:bg-gray-900 border border-amber-200 dark:border-amber-700 rounded-xl px-4 py-3 text-center text-2xl font-bold focus:outline-none focus:border-amber-500" dir="ltr">
                     <p class="text-xs text-gray-500 mt-2 text-center">موجب للإضافة (+10) أو سالب للخصم (-5)</p>
                 </div>
@@ -6251,7 +6843,7 @@ function openGroupPointsModal() {
 async function submitGroupPoints(e) {
     e.preventDefault();
     const reason = document.getElementById('group-points-reason').value.trim();
-    const points = parseInt(document.getElementById('group-points-value').value);
+    const points = parseFloat(document.getElementById('group-points-value').value);
     const groupId = currentGradingGroupId;
     const compId = currentGradingCompId;
     const dateVal = document.getElementById('grading-date') ? document.getElementById('grading-date').value : new Date().toISOString().split('T')[0];
@@ -6402,7 +6994,7 @@ async function buildWhatsAppQueue(btn) {
             const data = doc.data();
             if (data.date >= startDate && data.date <= endDate && dateStrings.includes(data.date)) {
                 activityDaysCount++;
-                totalActivityPossible += parseInt(data.points) || 0;
+                totalActivityPossible += parseFloat(data.points) || 0;
             }
         });
 
@@ -6429,10 +7021,10 @@ async function buildWhatsAppQueue(btn) {
                                  sSnap.forEach(doc => {
                                      let sc = doc.data();
                                      if(sc.studentId === st.id && sc.criteriaId === c.id && sc.date >= startDate && sc.date <= endDate) {
-                                         earned += parseInt(sc.points) || 0;
+                                         earned += parseFloat(sc.points) || 0;
                                      }
                                  });
-                                 let possible = (parseInt(c.positivePoints) || 0) * normalDaysCount;
+                                 let possible = (parseFloat(c.positivePoints) || 0) * normalDaysCount;
                                  reportText += `🔹 ${c.name}: ${earned} / ${possible}\n`;
                                  totalEarned += earned;
                                  totalPossible += possible;
@@ -6444,7 +7036,7 @@ async function buildWhatsAppQueue(btn) {
                              sSnap.forEach(doc => {
                                  let sc = doc.data();
                                  if(sc.studentId === st.id && sc.criteriaId === 'ACTIVITY_DAY' && sc.date >= startDate && sc.date <= endDate) {
-                                     actEarned += parseInt(sc.points) || 0;
+                                     actEarned += parseFloat(sc.points) || 0;
                                  }
                              });
                              reportText += `🏃 نقاط النشاط: ${actEarned} / ${totalActivityPossible}\n`;
@@ -6457,7 +7049,7 @@ async function buildWhatsAppQueue(btn) {
                         sSnap.forEach(doc => {
                              let sc = doc.data();
                              if(sc.studentId === st.id && sc.criteriaId === 'ABSENCE_RECORD' && sc.date >= startDate && sc.date <= endDate) {
-                                 deduction += parseInt(sc.points) || 0;
+                                 deduction += parseFloat(sc.points) || 0;
                                  absentDays.push(`${sc.date} (${sc.criteriaName || 'غياب'})`);
                              }
                         });
@@ -6706,7 +7298,7 @@ async function generatePDFReport() {
             const sc = d.data();
             if (sc.date >= startDate && sc.date <= endDate) {
                 if (!studentStatsMap[sc.studentId]) studentStatsMap[sc.studentId] = { points: 0, positive: 0, negative: 0, excused: 0, unexcused: 0 };
-                const pts = parseInt(sc.points) || 0;
+                const pts = parseFloat(sc.points) || 0;
                 studentStatsMap[sc.studentId].points += pts;
                 if (pts > 0) studentStatsMap[sc.studentId].positive += pts;
                 else if (pts < 0) studentStatsMap[sc.studentId].negative += Math.abs(pts);
@@ -6724,7 +7316,7 @@ async function generatePDFReport() {
         gsSnap.forEach(d => {
             const gs = d.data();
             if (gs.date >= startDate && gs.date <= endDate) {
-                groupScoresMap[gs.groupId] = (groupScoresMap[gs.groupId] || 0) + (parseInt(gs.points) || 0);
+                groupScoresMap[gs.groupId] = (groupScoresMap[gs.groupId] || 0) + (parseFloat(gs.points) || 0);
             }
         });
 
@@ -6734,8 +7326,8 @@ async function generatePDFReport() {
         container.innerHTML = `
             <div id="pdf-report-content" style="width: 1040px; padding: 30px; background: white; color: #1f2937; font-family: sans-serif; direction: rtl; text-align: right;">
                 
-                <div style="text-align: center; margin-bottom: 30px; border-bottom: 2px solid #0d9488; padding-bottom: 20px;">
-                    <h1 style="font-size: 26px; color: #0d9488; margin: 0; font-weight: bold;">مسابقات ابن تيمية</h1>
+                <div style="text-align: center; margin-bottom: 30px; border-bottom: 2px solid #064e3b; padding-bottom: 20px;">
+                    <h1 style="font-size: 26px; color: #064e3b; margin: 0; font-weight: bold;">برنامج المتابعة - النسخة التجريبية</h1>
                     <h2 style="font-size: 20px; color: #374151; margin: 10px 0 5px 0;">تقرير المجموعات التفصيلي</h2>
                     <p style="font-size: 14px; color: #6b7280; margin: 0;">هذا التقرير الشامل يوضح درجات الطلاب في "${compName}" والمشاركات والغيابات مع حساب صافي النقاط للمجموعات بناءاً على إحصائيات هذه الفترة.</p>
                     <p style="font-size: 14px; color: #6b7280; margin: 5px 0 0 0;">الفترة المشمولة: من ${startDate} إلى ${endDate}</p>
@@ -6784,7 +7376,7 @@ async function generatePDFReport() {
                                     <span style="font-size: 24px;">${g.icon && !isImgSrc(g.icon) ? g.icon : '🛡️'}</span>
                                     <h3 style="margin: 0; font-size: 20px; font-weight: bold;">${g.name}</h3>
                                 </div>
-                                <div style="font-size: 22px; font-weight: bold; color: ${netTotal >= 0 ? '#0d9488' : '#dc2626'};">
+                                <div style="font-size: 22px; font-weight: bold; color: ${netTotal >= 0 ? '#064e3b' : '#dc2626'};">
                                     الصافي: ${netTotal}
                                 </div>
                             </div>
@@ -6801,8 +7393,8 @@ async function generatePDFReport() {
                                 <thead>
                                     <tr style="background: #e5e7eb;">
                                         <th style="padding: 10px; border: 1px solid #d1d5db; width: 40px; text-align: center;">م</th>
-                                        <th style="padding: 10px; border: 1px solid #d1d5db;">اسم الطالب</th>
-                                        <th style="padding: 10px; border: 1px solid #d1d5db; width: 140px; text-align: center;">جوال ولي الأمر</th>
+                                        <th style="padding: 10px; border: 1px solid #d1d5db;">${state.currentLevel === 'ijazat' ? 'اسم الدارس' : 'اسم الطالب'}</th>
+                                        <th style="padding: 10px; border: 1px solid #d1d5db; width: 140px; text-align: center;">${state.currentLevel === 'ijazat' ? 'رقم الجوال' : 'جوال ولي الأمر'}</th>
                                         <th style="padding: 10px; border: 1px solid #d1d5db; width: 50px; text-align: center; color: #b91c1c;">بدون عذر</th>
                                         <th style="padding: 10px; border: 1px solid #d1d5db; width: 50px; text-align: center; color: #d97706;">بعذر</th>
                                         <th style="padding: 10px; border: 1px solid #d1d5db; width: 60px; text-align: center; color: #047857;">موجب</th>
@@ -6885,8 +7477,8 @@ async function exportStudentsPDF() {
         const container = document.createElement('div');
         container.innerHTML = `
             <div id="pdf-students-content" style="width: 1040px; padding: 30px; background: white; color: #1f2937; font-family: sans-serif; direction: rtl; text-align: right;">
-                <div style="text-align: center; margin-bottom: 30px; border-bottom: 2px solid #0d9488; padding-bottom: 20px;">
-                    <h1 style="font-size: 26px; color: #0d9488; margin: 0; font-weight: bold;">مسابقات ابن تيمية</h1>
+                <div style="text-align: center; margin-bottom: 30px; border-bottom: 2px solid #064e3b; padding-bottom: 20px;">
+                    <h1 style="font-size: 26px; color: #064e3b; margin: 0; font-weight: bold;">برنامج المتابعة - النسخة التجريبية</h1>
                     <h2 style="font-size: 20px; color: #374151; margin: 10px 0 5px 0;">سجل بيانات الطلاب الشامل</h2>
                     <p style="font-size: 14px; color: #6b7280; margin: 0;">المستوى: ${levelName} | إجمالي الطلاب: ${students.length}</p>
                 </div>
@@ -6896,7 +7488,7 @@ async function exportStudentsPDF() {
                         <div style="border: 1px solid #d1d5db; border-radius: 8px; overflow: hidden; page-break-inside: avoid;">
                             <div style="background: #f3f4f6; padding: 15px; border-bottom: 2px solid #9ca3af; display: flex; justify-content: space-between; align-items: center;">
                                 <h3 style="margin: 0; font-size: 20px; font-weight: bold;">مجموعة: ${g.name}</h3>
-                                <div style="font-size: 16px; font-weight: bold; color: #0d9488;">العدد: ${g.students.length}</div>
+                                <div style="font-size: 16px; font-weight: bold; color: #064e3b;">العدد: ${g.students.length}</div>
                             </div>
                             <table style="width: 100%; border-collapse: collapse; text-align: right; font-size: 14px;">
                                 <thead>
@@ -6971,7 +7563,7 @@ function openScoresReportsModal() {
         <div class="bg-white dark:bg-gray-800 rounded-2xl w-full max-w-sm p-6 shadow-2xl flex flex-col">
             <div class="flex justify-between items-center mb-6 border-b pb-4 border-gray-100 dark:border-gray-700">
                 <h3 class="font-bold text-lg flex items-center gap-2">
-                    <i data-lucide="file-spreadsheet" class="w-5 h-5 text-blue-600"></i>
+                    <i data-lucide="file-spreadsheet" class="w-5 h-5 text-emerald-600"></i>
                     سجل الدرجات الشامل (PDF)
                 </h3>
                 <button onclick="closeModal('scores-report-modal')" class="text-gray-400 hover:text-gray-600 p-1 bg-gray-50 dark:bg-gray-700 rounded-full">
@@ -6993,7 +7585,7 @@ function openScoresReportsModal() {
 
                 <div class="flex gap-3 pt-4">
                     <button type="button" onclick="closeModal('scores-report-modal')" class="flex-1 py-3 rounded-xl bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 font-medium transition">إلغاء</button>
-                    <button onclick="exportScoresPDF()" class="flex-1 py-3 bg-blue-600 text-white rounded-xl font-bold hover:bg-blue-700 shadow-lg transition flex justify-center items-center gap-2">
+                    <button onclick="exportScoresPDF()" class="flex-1 py-3 bg-emerald-600 text-white rounded-xl font-bold hover:bg-emerald-700 shadow-lg transition flex justify-center items-center gap-2">
                         <i data-lucide="download" class="w-5 h-5"></i>
                         تحميل سجل مفصل
                     </button>
@@ -7067,8 +7659,8 @@ async function exportScoresPDF() {
 
         container.innerHTML = `
             <div id="pdf-scores-content" style="width: 1040px; padding: 30px; background: white; color: #1f2937; font-family: sans-serif; direction: rtl; text-align: right;">
-                <div style="text-align: center; margin-bottom: 30px; border-bottom: 2px solid #0d9488; padding-bottom: 20px;">
-                    <h1 style="font-size: 26px; color: #0d9488; margin: 0; font-weight: bold;">مسابقات ابن تيمية</h1>
+                <div style="text-align: center; margin-bottom: 30px; border-bottom: 2px solid #064e3b; padding-bottom: 20px;">
+                    <h1 style="font-size: 26px; color: #064e3b; margin: 0; font-weight: bold;">برنامج المتابعة - النسخة التجريبية</h1>
                     <h2 style="font-size: 20px; color: #374151; margin: 10px 0 5px 0;">السجل التفصيلي للدرجات والمشاركات</h2>
                     <p style="font-size: 14px; color: #6b7280; margin: 0;">المستوى: ${levelName} | الفترة: ${startDate} إلى ${endDate} | عدد الحركات: ${logs.length}</p>
                 </div>
@@ -7238,7 +7830,7 @@ async function calculateAndRenderStats() {
             // Only count if student is in the current level
             if (stIds.includes(sc.studentId)) {
                 totalScoresRows++;
-                const pts = parseInt(sc.points) || 0;
+                const pts = parseFloat(sc.points) || 0;
                 
                 if (pts > 0) posPoints += pts;
                 else if (pts < 0) negPoints += Math.abs(pts);
@@ -7260,9 +7852,9 @@ async function calculateAndRenderStats() {
         container.innerHTML = `
             <!-- Overview Cards -->
             <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
-                <div class="bg-blue-50 dark:bg-blue-900/20 border border-blue-100 dark:border-blue-800 rounded-xl p-4 text-center">
-                    <p class="text-3xl font-bold text-blue-600 mb-1">${totalScoresRows}</p>
-                    <p class="text-xs text-blue-800 dark:text-blue-300">إجمالي الحركات (تقييمات)</p>
+                <div class="bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-100 dark:border-emerald-800 rounded-xl p-4 text-center">
+                    <p class="text-3xl font-bold text-emerald-600 mb-1">${totalScoresRows}</p>
+                    <p class="text-xs text-emerald-800 dark:text-emerald-300">إجمالي الحركات (تقييمات)</p>
                 </div>
                 <div class="bg-green-50 dark:bg-green-900/20 border border-green-100 dark:border-green-800 rounded-xl p-4 text-center">
                     <p class="text-3xl font-bold text-green-600 mb-1">+${posPoints}</p>
@@ -7296,7 +7888,7 @@ async function calculateAndRenderStats() {
                             ${sortedCriteria.length > 0 ? sortedCriteria.map(([name, data]) => `
                                 <tr class="hover:bg-gray-50 dark:hover:bg-gray-700/50 transition">
                                     <td class="p-3 font-bold">${name}</td>
-                                    <td class="p-3 text-center"><span class="bg-blue-100 dark:bg-blue-900/50 text-blue-700 dark:text-blue-300 py-1 px-3 rounded-full text-xs font-bold">${data.count}</span></td>
+                                    <td class="p-3 text-center"><span class="bg-emerald-100 dark:bg-emerald-900/50 text-emerald-700 dark:text-emerald-300 py-1 px-3 rounded-full text-xs font-bold">${data.count}</span></td>
                                     <td class="p-3 text-center font-bold ${data.points >= 0 ? 'text-green-600' : 'text-red-600'}" dir="ltr">${data.points > 0 ? '+' : ''}${data.points}</td>
                                 </tr>
                             `).join('') : `<tr><td colspan="3" class="p-6 text-center text-gray-400">لا يوجد حركات في هذه الفترة</td></tr>`}
@@ -7316,4 +7908,711 @@ async function calculateAndRenderStats() {
 // Auto-load Quran data on start
 if (window.QuranService) {
     window.QuranService.loadData().catch(console.error);
+}
+
+// =====================================================
+// === نظام النسخ الاحتياطي التلقائي الأسبوعي ===
+// =====================================================
+
+async function checkAndCreateWeeklyBackup() {
+    if (!state.isTeacher || !state.currentLevel) return;
+
+    try {
+        // جلب آخر نسخة لهذه الحلقة
+        const q = window.firebaseOps.query(
+            window.firebaseOps.collection(window.db, 'backups'),
+            window.firebaseOps.where('level', '==', state.currentLevel)
+        );
+        const snap = await window.firebaseOps.getDocs(q);
+
+        let lastBackup = null;
+        snap.forEach(doc => {
+            const d = doc.data();
+            const t = d.createdAt ? new Date(d.createdAt).getTime() : 0;
+            if (!lastBackup || t > new Date(lastBackup.createdAt).getTime()) {
+                lastBackup = d;
+            }
+        });
+
+        const sevenDaysMs = 7 * 24 * 60 * 60 * 1000;
+        const now = Date.now();
+        let needsBackup = true;
+
+        if (lastBackup && lastBackup.createdAt) {
+            const lastTime = new Date(lastBackup.createdAt).getTime();
+            if (now - lastTime < sevenDaysMs) {
+                needsBackup = false;
+            }
+        }
+
+        if (needsBackup) {
+            await performWeeklyBackup(!lastBackup);
+        }
+
+    } catch (e) {
+        console.error('⚠️ فحص النسخة الاحتياطية فشل:', e);
+    }
+}
+
+async function performWeeklyBackup(isFirst = false) {
+    try {
+        // جمع كل بيانات الحلقة بصمت
+        const [studentsSnap, scoresSnap, competitionsSnap, groupsSnap] = await Promise.all([
+            window.firebaseOps.getDocs(window.firebaseOps.query(
+                window.firebaseOps.collection(window.db, 'students'),
+                window.firebaseOps.where('level', '==', state.currentLevel)
+            )),
+            window.firebaseOps.getDocs(window.firebaseOps.query(
+                window.firebaseOps.collection(window.db, 'scores'),
+                window.firebaseOps.where('level', '==', state.currentLevel)
+            )),
+            window.firebaseOps.getDocs(window.firebaseOps.query(
+                window.firebaseOps.collection(window.db, 'competitions'),
+                window.firebaseOps.where('level', '==', state.currentLevel)
+            )),
+            window.firebaseOps.getDocs(window.firebaseOps.query(
+                window.firebaseOps.collection(window.db, 'groups'),
+                window.firebaseOps.where('level', '==', state.currentLevel)
+            ))
+        ]);
+
+        const students = [];
+        studentsSnap.forEach(doc => { const d = doc.data(); d.id = doc.id; students.push(d); });
+
+        const scores = [];
+        scoresSnap.forEach(doc => { const d = doc.data(); d.id = doc.id; scores.push(d); });
+
+        const competitions = [];
+        competitionsSnap.forEach(doc => { const d = doc.data(); d.id = doc.id; competitions.push(d); });
+
+        const groups = [];
+        groupsSnap.forEach(doc => { const d = doc.data(); d.id = doc.id; groups.push(d); });
+
+        const backupData = {
+            students,
+            scores,
+            competitions,
+            groups,
+            backupDate: new Date().toISOString(),
+            studentCount: students.length,
+            scoresCount: scores.length
+        };
+
+        // حفظ في جدول backups بصمت
+        await window.firebaseOps.addDoc(
+            window.firebaseOps.collection(window.db, 'backups'),
+            {
+                level: state.currentLevel,
+                backupData: backupData,
+                createdAt: new Date()
+            }
+        );
+
+    } catch (e) {
+        console.error('❌ فشل حفظ النسخة الاحتياطية:', e);
+    }
+}
+
+// نسخة احتياطية يدوية صامتة (متاحة من الكونسول فقط)
+window.manualBackup = async function() {
+    if (!state.isTeacher) return;
+    await performWeeklyBackup(false);
+};
+
+// =========================================
+// واجهة الرصد المباشر (Direct Grading Board)
+// =========================================
+function renderDirectGrading() {
+    const container = $('#view-container');
+    
+    if (!state.enableDirectGrading) {
+        container.innerHTML = `
+            <div class="flex flex-col items-center justify-center h-64 text-gray-400">
+                <i data-lucide="lock" class="w-12 h-12 mb-3"></i>
+                <p>ميزة الرصد المباشر معطلة للحلقة الحالية</p>
+                <p class="text-xs mt-2">يمكن للمعلم تفعيلها من الإعدادات</p>
+            </div>
+        `;
+        lucide.createIcons();
+        return;
+    }
+
+    container.innerHTML = `
+        <div class="space-y-4 animate-fade-in">
+            <div class="flex justify-between items-center mb-4">
+                <h2 class="text-xl font-bold">الرصد المباشر - ${(LEVELS[state.currentLevel] ? LEVELS[state.currentLevel].name : '')}</h2>
+                <button onclick="openCollectiveNoteModal()" class="bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-400 hover:bg-purple-200 dark:hover:bg-purple-900/60 px-3 py-2 rounded-xl text-sm font-bold transition flex items-center gap-1 border border-purple-200 dark:border-purple-800">
+                    <i data-lucide="message-square" class="w-4 h-4"></i>
+                    ملاحظة جماعية
+                </button>
+            </div>
+            
+            <div class="relative mb-4">
+                <i data-lucide="search" class="w-5 h-5 absolute right-3 top-3 text-gray-400"></i>
+                <input type="text" id="direct-student-search" placeholder="ابحث عن ${getLabel('student')}..." class="w-full bg-white dark:bg-gray-800 border-2 border-gray-100 dark:border-gray-700 rounded-xl py-3 pr-10 pl-4 focus:outline-none focus:border-emerald-500 transition" onkeyup="filterDirectStudents()">
+            </div>
+
+            <div id="direct-students-list" class="space-y-2 pb-24">
+                <!-- Students injected here -->
+            </div>
+        </div>
+    `;
+
+    updateDirectStudentsList();
+    lucide.createIcons();
+}
+
+function updateDirectStudentsList() {
+    const list = $('#direct-students-list');
+    if (!list) return;
+
+    if (state.students.length === 0) {
+        list.innerHTML = '<p class="text-center text-gray-500 py-8">لا يوجد طلاب مسجلين</p>';
+        return;
+    }
+
+    // Sort students alphabetically
+    const sorted = [...state.students].sort((a, b) => a.name.localeCompare(b.name));
+
+    list.innerHTML = sorted.map(student => {
+        const iconHtml = isImgSrc(student.icon) 
+            ? `<div class="w-10 h-10 rounded-full overflow-hidden border border-gray-200 shrink-0"><img src="${student.icon}" class="w-full h-full object-cover"></div>`
+            : `<div class="w-10 h-10 rounded-full bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-400 flex items-center justify-center text-xl shrink-0 border border-emerald-200 dark:border-emerald-800">${student.icon || '👤'}</div>`;
+
+        return `
+            <div class="direct-student-item flex items-center gap-3 p-3 bg-white dark:bg-gray-800 rounded-xl shadow-sm border border-gray-100 dark:border-gray-700 cursor-pointer hover:border-emerald-500 transition" onclick="openDirectGradingStudent('${student.id}')" data-name="${student.name}">
+                ${iconHtml}
+                <div class="flex-1">
+                    <p class="font-bold text-sm text-gray-900 dark:text-gray-100">${student.name}</p>
+                </div>
+                <i data-lucide="chevron-left" class="w-5 h-5 text-gray-400"></i>
+            </div>
+        `;
+    }).join('');
+    lucide.createIcons();
+}
+
+window.filterDirectStudents = function() {
+    const q = document.getElementById('direct-student-search').value.toLowerCase();
+    const items = document.querySelectorAll('.direct-student-item');
+    items.forEach(item => {
+        if (item.dataset.name.toLowerCase().includes(q)) {
+            item.style.display = 'flex';
+        } else {
+            item.style.display = 'none';
+        }
+    });
+};
+
+function openDirectGradingStudent(studentId) {
+    ensureRateStudentModal();
+    currentRateStudentId = studentId;
+    // Set a dummy competition ID so existing functions work but save isolated
+    currentGradingCompId = 'DIRECT_GRADING';
+    currentGradingGroupId = null; // Independent of groups
+    
+    const s = state.students.find(x => x.id === studentId);
+    $('#rate-student-name').textContent = s ? s.name : `تقييم ${getLabel('student')}`;
+    
+    // Set Date
+    if (document.getElementById('modal-grading-date')) {
+        document.getElementById('modal-grading-date').value = new Date().toISOString().split('T')[0];
+    }
+    
+    // Handle Ijazat Note visibility
+    const visSelect = document.getElementById('rate-note-visibility');
+    if (visSelect) {
+        if (state.currentLevel === 'ijazat') {
+            visSelect.value = 'student'; // Always to student
+            visSelect.classList.add('hidden'); // Hide it completely
+        } else {
+            visSelect.classList.remove('hidden');
+        }
+    }
+
+    if(document.getElementById('rate-note-text')) document.getElementById('rate-note-text').value = '';
+    
+    // Show quran section
+    const quranSec = document.getElementById('rate-quran-section');
+    if (quranSec) {
+        quranSec.classList.remove('hidden');
+        const startSuraMemorization = document.getElementById('rate-quran-start-sura-memorization');
+        if (startSuraMemorization && startSuraMemorization.options.length <= 1) {
+            const suras = window.QuranService.getSuras();
+            const optionsHtml = suras.map(sur => `<option value="${sur.number}">${sur.name}</option>`).join('');
+            ['memorization', 'review'].forEach(type => {
+                const sSura = document.getElementById(`rate-quran-start-sura-${type}`);
+                const eSura = document.getElementById(`rate-quran-end-sura-${type}`);
+                if(sSura) sSura.innerHTML = `<option value="">السورة..</option>` + optionsHtml;
+                if(eSura) eSura.innerHTML = `<option value="">السورة..</option>` + optionsHtml;
+            });
+        }
+        ['memorization', 'review'].forEach(type => {
+            const startS = document.getElementById(`rate-quran-start-sura-${type}`);
+            const endS = document.getElementById(`rate-quran-end-sura-${type}`);
+            if(startS) startS.value = "";
+            if(endS) endS.value = "";
+            const startA = document.getElementById(`rate-quran-start-aya-${type}`);
+            if(startA) { startA.innerHTML = '<option value="">الآية..</option>'; startA.disabled = true; }
+            const endA = document.getElementById(`rate-quran-end-aya-${type}`);
+            if(endA) { endA.innerHTML = '<option value="">الآية..</option>'; endA.disabled = true; }
+            const gradeEl = document.getElementById(`rate-quran-grade-${type}`);
+            if(gradeEl) gradeEl.value = "";
+        });
+    }
+
+    // Always use today for Direct Grading unless specified
+    const todayStr = new Date().toLocaleDateString('en-CA');
+
+    const grid = $('#criteria-buttons-grid');
+    grid.innerHTML = `
+        <div class="col-span-1 grid grid-cols-1 gap-3 w-full mb-3">
+            <button onclick="openAbsenceOptions()" class="bg-orange-50 text-orange-700 border border-orange-200 py-3 rounded-xl font-bold hover:bg-orange-100 transition flex items-center justify-center gap-2">
+                <i data-lucide="user-x" class="w-4 h-4"></i>
+                <span>تسجيل غياب</span>
+            </button>
+            <button onclick="openTransferStudent('${studentId}')" class="bg-purple-50 text-purple-700 border border-purple-200 py-3 rounded-xl font-bold hover:bg-purple-100 transition flex items-center justify-center gap-2">
+                <i data-lucide="arrow-right-left" class="w-4 h-4"></i>
+                <span>نقل ${getLabel('student')}</span>
+            </button>
+        </div>
+    `;
+
+    toggleModal('rate-student-modal', true);
+    lucide.createIcons();
+}
+
+// Override openAbsenceOptions slightly to handle DIRECT_GRADING
+const originalOpenAbsenceOptions = window.openAbsenceOptions;
+window.openAbsenceOptions = function() {
+    if (currentGradingCompId === 'DIRECT_GRADING') {
+        // Create custom direct absence modal
+        let modal = document.getElementById('absence-modal');
+        if (!modal) {
+            modal = document.createElement('div');
+            modal.id = 'absence-modal';
+            modal.className = 'fixed inset-0 bg-black/60 z-[150] flex items-center justify-center p-4 backdrop-blur-sm animate-fade-in';
+            document.body.appendChild(modal);
+        }
+        modal.innerHTML = `
+            <div class="bg-white dark:bg-gray-800 rounded-2xl w-full max-w-sm p-6 shadow-2xl text-center">
+                <div class="bg-orange-100 dark:bg-orange-900/30 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4 text-orange-600 dark:text-orange-400">
+                    <i data-lucide="user-x" class="w-8 h-8"></i>
+                </div>
+                <h3 class="font-bold text-lg mb-2">تسجيل غياب مباشر</h3>
+                <p class="text-sm text-gray-500 mb-6">سيتم تسجيل الغياب بدون درجات خصم.</p>
+                <div class="space-y-3">
+                    <button onclick="submitAbsence('بعذر', 0)" class="w-full py-3 bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 text-gray-800 dark:text-gray-100 font-bold rounded-xl transition">
+                        غياب بعذر
+                    </button>
+                    <button onclick="submitAbsence('بدون عذر', 0)" class="w-full py-3 bg-red-100 hover:bg-red-200 text-red-700 font-bold rounded-xl transition">
+                        غياب بدون عذر
+                    </button>
+                    <button onclick="closeModal('absence-modal')" class="w-full py-2 text-gray-400 hover:text-gray-600 mt-2 text-sm font-bold">
+                        إلغاء
+                    </button>
+                </div>
+            </div>
+        `;
+        modal.classList.remove('hidden');
+        lucide.createIcons();
+    } else {
+        if (originalOpenAbsenceOptions) originalOpenAbsenceOptions();
+    }
+};
+
+async function submitAbsence(label, points) {
+    if (!currentRateStudentId) {
+        showToast("خطأ: لم يتم تحديد الطالب", "error");
+        return;
+    }
+
+    try {
+        const student = state.students.find(s => s.id === currentRateStudentId);
+        const dateVal = document.getElementById('modal-grading-date') ? document.getElementById('modal-grading-date').value : new Date().toISOString().split('T')[0];
+
+        // 1. Save to DB
+        const scoreData = {
+            studentId: currentRateStudentId,
+            competitionId: currentGradingCompId === 'DIRECT_GRADING' ? null : currentGradingCompId,
+            groupId: currentGradingGroupId || null,
+            criteriaId: 'ABSENCE_RECORD',
+            criteriaName: 'غياب (' + label + ')',
+            points: points || 0,
+            type: 'negative',
+            level: state.currentLevel,
+            date: dateVal,
+            updatedAt: new Date().toISOString(),
+            timestamp: Date.now(),
+            createdAt: new Date().toISOString()
+        };
+
+        await window.firebaseOps.addDoc(window.firebaseOps.collection(window.db, "scores"), scoreData);
+        
+        // 2. WhatsApp Notification
+        if (student && student.studentNumber) {
+            const phone = student.studentNumber;
+            const msg = state.currentLevel === 'ijazat' 
+                ? `السلام عليكم يا أخي ${student.name}،\nتم تسجيل غياب لك اليوم (${label}).\nنرجو الحرص على الحضور والمتابعة.`
+                : `السلام عليكم ولي أمر الطالب ${student.name}،\nتم تسجيل غياب للطالب اليوم (${label}).\nنرجو الحرص على الحضور.`;
+
+            const url = `https://wa.me/${phone}?text=${encodeURIComponent(msg)}`;
+            window.open(url, '_blank');
+        }
+
+        showToast("تم تسجيل الغياب بنجاح");
+        closeModal('absence-modal');
+        closeModal('rate-student-modal');
+
+    } catch (e) {
+        console.error("Error submitting absence:", e);
+        showToast("حدث خطأ أثناء تسجيل الغياب", "error");
+    }
+}
+
+// Also ensure submitScore can accept 0 points specifically for direct grading
+// We don't need to change submitScore itself since parseInt(0) === 0
+
+// =========================================
+// تسجيل الطالب الذاتي (Self-Registration)
+// =========================================
+function openRegistrationLinkModal() {
+    if (!state.currentLevel) return;
+    const url = window.location.origin + window.location.pathname + '?register=1&level=' + encodeURIComponent(state.currentLevel);
+    
+    // Set URL
+    const displayEl = document.getElementById('registration-link-display');
+    if (displayEl) {
+        displayEl.textContent = url;
+    }
+    
+    // Set Copy action
+    const copyBtn = document.getElementById('copy-registration-link-btn');
+    if (copyBtn) {
+        copyBtn.onclick = () => {
+            navigator.clipboard.writeText(url).then(() => {
+                showToast('تم نسخ الرابط بنجاح! 📋');
+                closeModal('registration-link-modal');
+            });
+        };
+    }
+    
+    toggleModal('registration-link-modal', true);
+    lucide.createIcons();
+}
+
+function ensureRateStudentModal() {
+    if (document.getElementById('rate-student-modal')) return;
+
+    const modal = document.createElement('div');
+    modal.id = 'rate-student-modal';
+    modal.className = 'fixed inset-0 bg-black/60 z-[100] hidden flex items-center justify-center p-4';
+    modal.innerHTML = `
+        <div class="bg-white dark:bg-gray-800 rounded-3xl w-full max-w-sm shadow-2xl flex flex-col max-h-[90vh]">
+            <div class="flex justify-between items-center p-6 border-b border-gray-100 dark:border-gray-700 shrink-0">
+                <h3 id="rate-student-name" class="font-bold text-lg">اسم ${getLabel('student')}</h3>
+                <button onclick="closeModal('rate-student-modal')"><i data-lucide="x" class="w-5 h-5"></i></button>
+            </div>
+            
+            <div class="p-6 overflow-y-auto flex-1">
+                <p id="rate-date-display" class="text-xs text-gray-500 text-center mb-2 font-bold"></p>
+                
+                <div id="rate-quran-section" class="hidden mb-4 space-y-4">
+                    <!-- Hifz Box -->
+                    <div class="bg-emerald-50 dark:bg-emerald-900/10 p-4 rounded-xl border border-emerald-100 dark:border-emerald-800 text-right space-y-3 shadow-sm">
+                        <h4 class="font-bold text-xs text-emerald-700 dark:text-emerald-400 flex items-center gap-1">📝 تسجيل حفظ أو مراجعة صغرى</h4>
+                        <div class="grid grid-cols-2 gap-2">
+                            <div>
+                                <p class="text-[10px] font-bold text-gray-500 mb-1">من سورة</p>
+                                <select id="rate-quran-start-sura-memorization" class="w-full bg-white dark:bg-gray-700 border border-gray-200 rounded-lg px-1 py-1.5 text-[11px] font-bold" onchange="updateQuranAyas('start', 'memorization')">
+                                    <option value="">السورة..</option>
+                                </select>
+                            </div>
+                            <div>
+                                <p class="text-[10px] font-bold text-gray-500 mb-1">من آية</p>
+                                <select id="rate-quran-start-aya-memorization" class="w-full bg-white dark:bg-gray-700 border border-gray-200 rounded-lg px-1 py-1.5 text-[11px]" disabled>
+                                    <option value="">الآية..</option>
+                                </select>
+                            </div>
+                            <div>
+                                <p class="text-[10px] font-bold text-gray-500 mb-1">إلى سورة</p>
+                                <select id="rate-quran-end-sura-memorization" class="w-full bg-white dark:bg-gray-700 border border-gray-200 rounded-lg px-1 py-1.5 text-[11px] font-bold" onchange="updateQuranAyas('end', 'memorization')">
+                                    <option value="">السورة..</option>
+                                </select>
+                            </div>
+                            <div>
+                                <p class="text-[10px] font-bold text-gray-500 mb-1">إلى آية</p>
+                                <select id="rate-quran-end-aya-memorization" class="w-full bg-white dark:bg-gray-700 border border-gray-200 rounded-lg px-1 py-1.5 text-[11px]" disabled>
+                                    <option value="">الآية..</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div>
+                            <p class="text-[10px] font-bold text-gray-500 mb-1">التقدير</p>
+                            <select id="rate-quran-grade-memorization" class="w-full bg-white dark:bg-gray-700 border border-gray-200 rounded-lg px-1 py-1.5 text-[11px] font-bold">
+                                <option value="">اختر التقدير..</option>
+                                <option value="ممتاز">⭐ ممتاز</option>
+                                <option value="جيد جداً">✨ جيد جداً</option>
+                                <option value="مقبول">👍 مقبول</option>
+                                <option value="سيء">⚠️ سيء</option>
+                                <option value="لم يحفظ">❌ لم يحفظ</option>
+                            </select>
+                        </div>
+                        <button onclick="submitQuranRecord('memorization')" class="w-full py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl transition flex items-center justify-center gap-2">
+                            <i data-lucide="save" class="w-4 h-4"></i>حفظ المقطع
+                        </button>
+                    </div>
+
+                    <!-- Murajaa Box -->
+                    <div class="bg-emerald-50 dark:bg-emerald-900/10 p-4 rounded-xl border border-emerald-100 dark:border-emerald-800 text-right space-y-3 shadow-sm">
+                        <h4 class="font-bold text-xs text-emerald-700 dark:text-emerald-400 flex items-center gap-1">🔄 تسجيل مراجعة أو مراجعة كبرى</h4>
+                        <div class="grid grid-cols-2 gap-2">
+                            <div>
+                                <p class="text-[10px] font-bold text-gray-500 mb-1">من سورة</p>
+                                <select id="rate-quran-start-sura-review" class="w-full bg-white dark:bg-gray-700 border border-gray-200 rounded-lg px-1 py-1.5 text-[11px] font-bold" onchange="updateQuranAyas('start', 'review')">
+                                    <option value="">السورة..</option>
+                                </select>
+                            </div>
+                            <div>
+                                <p class="text-[10px] font-bold text-gray-500 mb-1">من آية</p>
+                                <select id="rate-quran-start-aya-review" class="w-full bg-white dark:bg-gray-700 border border-gray-200 rounded-lg px-1 py-1.5 text-[11px]" disabled>
+                                    <option value="">الآية..</option>
+                                </select>
+                            </div>
+                            <div>
+                                <p class="text-[10px] font-bold text-gray-500 mb-1">إلى سورة</p>
+                                <select id="rate-quran-end-sura-review" class="w-full bg-white dark:bg-gray-700 border border-gray-200 rounded-lg px-1 py-1.5 text-[11px] font-bold" onchange="updateQuranAyas('end', 'review')">
+                                    <option value="">السورة..</option>
+                                </select>
+                            </div>
+                            <div>
+                                <p class="text-[10px] font-bold text-gray-500 mb-1">إلى آية</p>
+                                <select id="rate-quran-end-aya-review" class="w-full bg-white dark:bg-gray-700 border border-gray-200 rounded-lg px-1 py-1.5 text-[11px]" disabled>
+                                    <option value="">الآية..</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div>
+                            <p class="text-[10px] font-bold text-gray-500 mb-1">التقدير</p>
+                            <select id="rate-quran-grade-review" class="w-full bg-white dark:bg-gray-700 border border-gray-200 rounded-lg px-1 py-1.5 text-[11px] font-bold">
+                                <option value="">اختر التقدير..</option>
+                                <option value="ممتاز">⭐ ممتاز</option>
+                                <option value="جيد جداً">✨ جيد جداً</option>
+                                <option value="مقبول">👍 مقبول</option>
+                                <option value="سيء">⚠️ سيء</option>
+                                <option value="لم يراجع">❌ لم يراجع</option>
+                            </select>
+                        </div>
+                        <button onclick="submitQuranRecord('review')" class="w-full py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl transition flex items-center justify-center gap-2">
+                            <i data-lucide="save" class="w-4 h-4"></i>حفظ المراجعة
+                        </button>
+                    </div>
+                </div>                     
+                <div id="rate-quran-plan-display" class="hidden mb-3 text-sm text-center bg-gray-50 dark:bg-gray-700/50 border border-gray-200 dark:border-gray-600 p-2 rounded-lg font-bold text-emerald-800 dark:text-emerald-400"></div>
+
+                <div class="mb-4 bg-gray-50 dark:bg-gray-900/50 p-3 rounded-xl border border-gray-200 dark:border-gray-700 shadow-sm">
+                    <label class="block text-[11px] font-bold text-gray-500 mb-1">📅 تاريخ الرصد</label>
+                    <input type="date" id="modal-grading-date" class="w-full bg-white dark:bg-gray-700 border border-gray-200 dark:border-gray-600 rounded-lg px-2 py-1.5 text-sm font-bold text-gray-700 dark:text-gray-200 outline-none focus:border-emerald-500 transition">
+                </div>
+                
+                <!-- Note Box -->
+                <div class="mb-4 bg-yellow-50 dark:bg-yellow-900/10 p-4 rounded-xl border border-yellow-200 dark:border-yellow-800 text-right space-y-3 shadow-sm">
+                    <h4 class="font-bold text-xs text-yellow-700 dark:text-yellow-400 flex items-center gap-1">📝 إرسال ملاحظة نصية</h4>
+                    <textarea id="rate-note-text" rows="2" class="w-full bg-white dark:bg-gray-700 border border-yellow-200 rounded-lg px-2 py-2 text-xs" placeholder="اكتب الملاحظة هنا..."></textarea>
+                    <div class="space-y-2">
+                        <select id="rate-note-visibility" class="w-full bg-white dark:bg-gray-700 border border-yellow-200 rounded-lg px-2 py-2 text-xs font-bold text-gray-600">
+                            <option value="both">${state.currentLevel === 'ijazat' ? 'للجميع' : 'للطالب وولي الأمر'}</option>
+                            <option value="student">${state.currentLevel === 'ijazat' ? 'خاص بي فقط' : 'للطالب فقط'}</option>
+                            <option value="parent">${state.currentLevel === 'ijazat' ? 'للآخرين فقط' : 'لولي الأمر فقط'}</option>
+                        </select>
+                        <button onclick="submitNote()" class="w-full py-2.5 bg-yellow-500 hover:bg-yellow-600 text-white font-bold text-xs rounded-xl transition flex items-center justify-center gap-2 shadow-sm">
+                            <i data-lucide="send" class="w-4 h-4"></i> إرسال الملاحظة
+                        </button>
+                    </div>
+                </div>
+
+                <div id="criteria-buttons-grid" class="grid grid-cols-1 gap-3"></div>
+            </div>
+        </div>
+    `;
+    document.body.appendChild(modal);
+}
+
+async function submitStudentSelfRegistration() {
+    const level = window._selfRegistrationLevel;
+    if (!level || !LEVELS[level]) {
+        showToast("خطأ في تحديد الحلقة", "error");
+        return;
+    }
+
+    const name = $('#self-reg-name').value.trim();
+    const idNum = $('#self-reg-id').value.trim();
+    const phoneInput = $('#self-reg-phone').value.trim();
+    const password = $('#self-reg-password').value;
+    const lastAssoc = $('#self-reg-last-test').value.trim();
+    const icon = window._selectedAddStudentIcon || '👤';
+
+    if (!name || !idNum || !phoneInput || !password) {
+        showToast("الرجاء تعبئة جميع الحقول وإدخال كلمة المرور", "error");
+        return;
+    }
+
+    const phone = normalizePhone(phoneInput);
+    if (!phone || phone.length < 9) {
+        showToast("الرجاء إدخال رقم جوال صحيح", "error");
+        return;
+    }
+
+    try {
+        const loadingBtn = $('#self-reg-submit-btn');
+        loadingBtn.disabled = true;
+        loadingBtn.innerHTML = '<i data-lucide="loader-2" class="w-5 h-5 animate-spin"></i> جاري التسجيل...';
+
+        const data = {
+            name: name,
+            studentNumber: phone,
+            national_id: idNum,
+            parentPhone: phone,
+            password: password,
+            last_association_exam: lastAssoc,
+            level: level,
+            icon: icon,
+            createdAt: new Date().toISOString()
+        };
+
+        await window.firebaseOps.addDoc(window.firebaseOps.collection(window.db, "students"), data);
+        
+        showToast("تم تسجيلك بنجاح! 🎉");
+        
+        // Remove URL params and show login
+        history.replaceState(null, '', window.location.pathname);
+        setTimeout(() => {
+            window.location.reload();
+        }, 2000);
+
+    } catch (e) {
+        console.error("Error registering student:", e);
+        showToast("خطأ أثناء التسجيل، يرجى المحاولة لاحقاً", "error");
+        $('#self-reg-submit-btn').disabled = false;
+        $('#self-reg-submit-btn').textContent = 'إتمام التسجيل';
+    }
+}
+
+// =========================================
+// الملاحظات الجماعية (Collective Notes)
+// =========================================
+function openCollectiveNoteModal() {
+    const d = new Date();
+    // Default to today in YYYY-MM-DD local time
+    $('#collective-note-date').value = d.toLocaleDateString('en-CA');
+    $('#collective-note-text').value = '';
+    
+    // Auto-hide visibility options for ijazat adult circles
+    const visibilityContainer = $('#collective-note-visibility-container');
+    if (visibilityContainer) {
+        if (state.currentLevel === 'ijazat') {
+            visibilityContainer.style.display = 'none';
+            $('#collective-note-visibility').value = 'student'; // Force student only
+        } else {
+            visibilityContainer.style.display = 'block';
+            $('#collective-note-visibility').value = 'student'; // Default
+        }
+    }
+
+    toggleModal('collective-note-modal', true);
+}
+
+async function submitCollectiveNote() {
+    const dateVal = $('#collective-note-date').value;
+    const noteText = $('#collective-note-text').value.trim();
+    const visibility = $('#collective-note-visibility').value;
+
+    if (!dateVal) {
+        showToast("يرجى اختيار التاريخ", "error");
+        return;
+    }
+    if (!noteText) {
+        showToast("يرجى كتابة الملاحظة أولاً", "error");
+        return;
+    }
+
+    let targetStudents = [];
+    let compId = null;
+    let groupId = null;
+
+    if (state.currentView === 'direct_grading') {
+        // Direct grading - send to all students in level
+        targetStudents = state.students;
+    } else if (state.currentView === 'manage_competition_scores') {
+        // Competition grading - send to students in the current group
+        if (!currentManageCompId || !currentGradingGroupId) {
+            showToast("حدث خطأ في تحديد المجموعة", "error");
+            return;
+        }
+        compId = currentManageCompId;
+        groupId = currentGradingGroupId;
+        
+        // Find group to get members
+        const group = state.groups.find(g => g.id === groupId);
+        if (group && group.members) {
+            targetStudents = state.students.filter(s => group.members.includes(s.id));
+        }
+    } else {
+        showToast("هذه الميزة غير متاحة هنا", "error");
+        return;
+    }
+
+    if (!targetStudents || targetStudents.length === 0) {
+        showToast("لا يوجد طلاب لإرسال الملاحظة لهم", "error");
+        return;
+    }
+
+    // Disable button and show loading text
+    const submitBtn = document.querySelector('#collective-note-modal button[onclick="submitCollectiveNote()"]');
+    const originalText = submitBtn.innerHTML;
+    submitBtn.disabled = true;
+    submitBtn.innerHTML = '<i data-lucide="loader-2" class="w-5 h-5 animate-spin"></i> جاري الإرسال...';
+    lucide.createIcons();
+
+    let criteriaName = "ملاحظة المعلم (جماعية)";
+    if(visibility === 'student') criteriaName += state.currentLevel === 'ijazat' ? " (مباشرة)" : ` (لـ${getLabel('student')} فقط)`;
+    else if(visibility === 'parent') criteriaName += state.currentLevel === 'ijazat' ? " (للآخرين فقط)" : ` (لـ${getLabel('parent')} فقط)`;
+
+    try {
+        const batch = window.firebaseOps.writeBatch(window.db);
+        const timestamp = Date.now();
+        const isoDate = new Date().toISOString();
+
+        for (const student of targetStudents) {
+            const docRef = window.firebaseOps.doc(window.firebaseOps.collection(window.db, "scores"));
+            batch.set(docRef, {
+                studentId: student.id,
+                competitionId: compId,
+                groupId: groupId,
+                criteriaId: 'TEACHER_NOTE',
+                criteriaName: criteriaName,
+                points: 0,
+                type: 'neutral',
+                noteText: noteText,
+                visibility: visibility,
+                level: state.currentLevel,
+                date: dateVal,
+                updatedAt: isoDate,
+                timestamp: timestamp,
+                createdAt: isoDate,
+                isCollective: true // Flag to identify collective notes
+            });
+        }
+
+        await batch.commit();
+        showToast(`تم إرسال الملاحظة إلى ${targetStudents.length} طلاب بنجاح`, "success");
+        closeModal('collective-note-modal');
+    } catch (e) {
+        console.error("Error sending collective notes:", e);
+        showToast("حدث خطأ أثناء إرسال الملاحظة الجماعية", "error");
+    } finally {
+        submitBtn.disabled = false;
+        submitBtn.innerHTML = originalText;
+        lucide.createIcons();
+    }
 }

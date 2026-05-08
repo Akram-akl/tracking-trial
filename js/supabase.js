@@ -6,13 +6,12 @@
 // =====================================================
 
 const SUPABASE_URL = 'https://xxcqfqedyymuafqvdtgg.supabase.co';
-const SUPABASE_ANON_KEY = 'sb_publishable_0spsK-3jFJ87kmyCc_SCpQ_7fm7uBN8';
+const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inh4Y3FmcWVkeXltdWFmcXZkdGdnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njk2MDE1MTAsImV4cCI6MjA4NTE3NzUxMH0.t5NArVykZRw5vX-e_Sr-eHzIuwlV6fch85APqL0nZi0';
 
 // Initialize Supabase Client
 const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
-// Expose globally for debugging
-window.supabaseClient = supabaseClient;
+// Note: supabaseClient is NOT exposed globally for security reasons
 
 // =====================================================
 // Firebase-Compatible API Wrapper
@@ -55,6 +54,12 @@ function collection(db, tableName) {
 
 // ===== DOCUMENT REFERENCE =====
 function doc(db, tableName, docId) {
+    // [IMPROVED]: Support doc(collectionRef) and doc(collectionRef, docId)
+    if (db && db._type === 'collection') {
+        const coll = db;
+        const id = tableName || Math.random().toString(36).substr(2, 9);
+        return { _table: coll._table, _id: id, _type: 'doc' };
+    }
     return { _table: tableName, _id: docId, _type: 'doc' };
 }
 

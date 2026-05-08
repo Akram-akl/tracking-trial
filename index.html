@@ -4,8 +4,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="theme-color" content="#0d9488">
-    <title>مسابقات ابن تيمية</title>
+    <meta name="theme-color" content="#065f46">
+    <title>برنامج المتابعة - النسخة التجريبية</title>
     <script>
         // Diagnostic script - Runs before anything else
         (function () {
@@ -40,11 +40,15 @@
             font-size: 1.25rem;
             line-height: 2;
         }
+        .bg-mesh-gradient { background: radial-gradient(circle at 20% 30%, #14b8a6 0%, transparent 50%), radial-gradient(circle at 80% 70%, #059669 0%, transparent 50%); }
+        .bg-subtle-pattern { background-image: url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iODAiIGhlaWdodD0iODAiIHZpZXdCb3g9IjAgMCA4MCA4MCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KICAgIDxwYXRoIGQ9Ik00MCAwIEw0OS4yIDMxLjUgTDgwIDQwIEw0OS4yIDQ4LjUgTDQwIDgwIEwzMC44IDQ4LjUgTDAgNDAgTDMwLjggMzEuNSBaIiBmaWxsPSJub25lIiBzdHJva2U9IndoaXRlIiBzdHJva2Utd2lkdGg9IjEiLz4KPC9zdmc+'); }
+        .safe-pt { padding-top: max(env(safe-area-inset-top, 20px), 20px); }
+        .dir-ltr { direction: ltr; }
     </style>
 
     <!-- App Icons -->
-    <link rel="apple-touch-icon" href="./apple-touch-icon.png">
-    <link rel="icon" type="image/png" href="./apple-touch-icon.png">
+    <link rel="apple-touch-icon" href="./apple-touch-icon.jpg">
+    <link rel="icon" type="image/jpeg" href="./apple-touch-icon.jpg">
 
     <!-- Tailwind / Custom CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
@@ -84,38 +88,38 @@
         class="max-w-md mx-auto h-screen relative shadow-2xl bg-white/80 dark:bg-gray-800/80 backdrop-blur-sm flex flex-col overflow-hidden">
 
         <!-- AUTH OVERLAY (Initial State) -->
-        <div id="auth-overlay" class="fixed inset-0 z-[100] bg-teal-950 flex items-center justify-center p-4 hidden overflow-hidden">
+        <div id="auth-overlay" class="fixed inset-0 z-[100] bg-emerald-950 flex items-center justify-center p-4 hidden overflow-hidden">
             <!-- Premium Mesh Gradient -->
-            <div class="absolute inset-0 bg-gradient-to-br from-teal-950 via-teal-900 to-emerald-950"></div>
-            <div class="absolute inset-0 opacity-30" style="background: radial-gradient(circle at 20% 30%, #14b8a6 0%, transparent 50%), radial-gradient(circle at 80% 70%, #059669 0%, transparent 50%);"></div>
+            <div class="absolute inset-0 bg-gradient-to-br from-emerald-950 via-emerald-900 to-emerald-950"></div>
+            <div class="absolute inset-0 opacity-30 bg-mesh-gradient"></div>
 
             <!-- Subtle Geometric Texture (Repeatable SVG Pattern) -->
-            <div class="absolute inset-0 opacity-[0.03] pointer-events-none" style="background-image: url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iODAiIGhlaWdodD0iODAiIHZpZXdCb3g9IjAgMCA4MCA4MCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KICAgIDxwYXRoIGQ9Ik00MCAwIEw0OS4yIDMxLjUgTDgwIDQwIEw0OS4yIDQ4LjUgTDQwIDgwIEwzMC44IDQ4LjUgTDAgNDAgTDMwLjggMzEuNSBaIiBmaWxsPSJub25lIiBzdHJva2U9IndoaXRlIiBzdHJva2Utd2lkdGg9IjEiLz4KPC9zdmc+');"></div>
+            <div class="absolute inset-0 opacity-[0.03] pointer-events-none bg-subtle-pattern"></div>
 
             <!-- Decorative Floating Octagrams (Depth) -->
             <div class="absolute inset-0 overflow-hidden pointer-events-none">
-                <svg class="absolute -top-10 -left-10 w-64 h-64 text-teal-500/10" viewBox="0 0 100 100"><path d="M50 0 L61.2 38.8 L100 50 L61.2 61.2 L50 100 L38.8 61.2 L0 50 L38.8 38.8 Z" fill="currentColor"/></svg>
+                <svg class="absolute -top-10 -left-10 w-64 h-64 text-emerald-500/10" viewBox="0 0 100 100"><path d="M50 0 L61.2 38.8 L100 50 L61.2 61.2 L50 100 L38.8 61.2 L0 50 L38.8 38.8 Z" fill="currentColor"/></svg>
                 <svg class="absolute top-1/2 -right-20 w-80 h-80 text-emerald-500/10 blur-xl" viewBox="0 0 100 100"><path d="M50 0 L61.2 38.8 L100 50 L61.2 61.2 L50 100 L38.8 61.2 L0 50 L38.8 38.8 Z" fill="currentColor"/></svg>
-                <svg class="absolute -bottom-20 left-1/4 w-72 h-72 text-teal-400/5" viewBox="0 0 100 100"><path d="M50 0 L61.2 38.8 L100 50 L61.2 61.2 L50 100 L38.8 61.2 L0 50 L38.8 38.8 Z" fill="currentColor"/></svg>
+                <svg class="absolute -bottom-20 left-1/4 w-72 h-72 text-emerald-400/5" viewBox="0 0 100 100"><path d="M50 0 L61.2 38.8 L100 50 L61.2 61.2 L50 100 L38.8 61.2 L0 50 L38.8 38.8 Z" fill="currentColor"/></svg>
             </div>
 
-            <div class="bg-white dark:bg-gray-900 rounded-[2.5rem] w-full max-w-sm shadow-[0_20px_60px_-15px_rgba(0,0,0,0.5)] relative z-10 overflow-hidden border border-white/10">
+            <div id="main-auth-card" class="bg-white dark:bg-gray-900 rounded-[2.5rem] w-full max-w-sm shadow-[0_20px_60px_-15px_rgba(0,0,0,0.5)] relative z-10 overflow-hidden border border-white/10">
                 <div
-                    class="h-24 bg-gradient-to-br from-teal-500 to-teal-700 flex items-center justify-center relative overflow-hidden">
+                    class="h-24 bg-gradient-to-br from-emerald-500 to-emerald-700 flex items-center justify-center relative overflow-hidden">
                     <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-white drop-shadow-lg opacity-90"><circle cx="12" cy="8" r="6"/><path d="M15.477 12.89 17 22l-5-3-5 3 1.523-9.11"/></svg>
                 </div>
 
                 <div class="p-6 max-h-[75vh] overflow-y-auto custom-scrollbar">
-                    <h1 class="text-xl font-black text-center mb-1 text-gray-800 dark:text-white">مسابقات ابن تيمية</h1>
-                    <p class="text-center text-gray-500 text-xs mb-6">منصة التحفيظ والمسابقات القرآنية</p>
+                    <h1 class="text-xl font-black text-center mb-1 text-gray-800 dark:text-white">برنامج المتابعة - النسخة التجريبية</h1>
+                    <p class="text-center text-gray-500 text-xs mb-6">منصة التحفيظ والمتابعه القرآنية</p>
 
                     <!-- Step 1: Role Selection -->
                     <div id="auth-options-panel" class="space-y-4">
                         <button onclick="handleLogin('student')"
-                            class="w-full flex items-center p-3 rounded-2xl border-2 border-gray-100 dark:border-gray-800 hover:border-teal-500 hover:bg-teal-50 dark:hover:bg-teal-900/20 transition-all duration-300 group">
+                            class="w-full flex items-center p-3 rounded-2xl border-2 border-gray-100 dark:border-gray-800 hover:border-emerald-500 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 transition-all duration-300 group">
                                 <div
-                                    class="w-10 h-10 bg-teal-100 dark:bg-teal-900 rounded-full flex items-center justify-center text-2xl group-hover:scale-110 transition">
-                                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-6 h-6 text-teal-700 dark:text-teal-200"><path d="M22 10v6M2 10l10-5 10 5-10 5z"/><path d="M6 12v5c3 3 9 3 12 0v-5"/></svg></div>
+                                    class="w-10 h-10 bg-emerald-100 dark:bg-emerald-900 rounded-full flex items-center justify-center text-2xl group-hover:scale-110 transition">
+                                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-6 h-6 text-emerald-700 dark:text-emerald-200"><path d="M22 10v6M2 10l10-5 10 5-10 5z"/><path d="M6 12v5c3 3 9 3 12 0v-5"/></svg></div>
                             <div class="mr-3 text-right">
                                 <div class="font-bold text-base">أنا طالب</div>
                                 <div class="text-[10px] text-gray-400">الدخول لمتابعة نقاطي</div>
@@ -124,13 +128,13 @@
                         </button>
 
                         <button onclick="handleLogin('teacher')"
-                            class="w-full flex items-center p-3 rounded-2xl border-2 border-gray-100 dark:border-gray-800 hover:border-teal-500 hover:bg-teal-50 dark:hover:bg-teal-900/20 transition-all duration-300 group">
+                            class="w-full flex items-center p-3 rounded-2xl border-2 border-gray-100 dark:border-gray-800 hover:border-emerald-500 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 transition-all duration-300 group">
                                 <div
                                     class="w-10 h-10 bg-purple-100 dark:bg-purple-900 rounded-full flex items-center justify-center text-2xl group-hover:scale-110 transition">
                                 <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-6 h-6 text-purple-700 dark:text-purple-200"><path d="M2 3h20"/><path d="M21 3v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V3"/><path d="m7 21 5-5 5 5"/><path d="M12 7v4"/><path d="M9 11h6"/></svg></div>
                             <div class="mr-3 text-right">
                                 <div class="font-bold text-base">أنا معلم</div>
-                                <div class="text-[10px] text-gray-400">إدارة الطلاب والمسابقات</div>
+                                <div class="text-[10px] text-gray-400">إداره الطلاب و المتابعه</div>
                             </div>
                             <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="mr-auto text-gray-300 w-5 h-5"><path d="m15 18-6-6 6-6"/></svg>
                         </button>
@@ -155,23 +159,21 @@
                                 <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-4 h-4 ml-1"><path d="M19 12H5"/><path d="m12 19-7-7 7-7"/></svg>
                             رجوع
                         </button>
-                        <h2 class="text-2xl font-black mb-6 text-center text-teal-700 dark:text-teal-400">دخول الطلاب 🎓</h2>
+                        <h2 class="text-2xl font-black mb-6 text-center text-emerald-800 dark:text-emerald-400">دخول الطلاب 🎓</h2>
 
                         <div id="student-step-1" class="space-y-4">
                             <div>
-                                <label class="block text-sm font-bold mb-2">اختر المرحلة</label>
-                                <select id="student-level-select" aria-label="اختر المرحلة"
-                                    class="w-full bg-gray-50 dark:bg-gray-800 border-2 border-gray-200 dark:border-gray-700 rounded-xl px-4 py-3 appearance-none focus:outline-none focus:border-teal-500">
+                                <label class="block text-sm font-bold mb-2">اختر الحلقة</label>
+                                <select id="student-level-select" aria-label="اختر الحلقة"
+                                    class="w-full bg-gray-50 dark:bg-gray-800 border-2 border-gray-200 dark:border-gray-700 rounded-xl px-4 py-3 appearance-none focus:outline-none focus:border-emerald-500">
                                     <option value="" disabled selected>-- اختر --</option>
-                                    <option value="secondary">المرحلة الثانوية 🏢</option>
-                                    <option value="middle">المرحلة المتوسطة 🏫</option>
-                                    <option value="upper_elem">الابتدائية العليا 🎒</option>
-                                    <option value="lower_elem">الابتدائية الأولية 🧸</option>
+                                    <option value="ibn_umar">حلقة عبدالله بن عمر</option>
+                                    <option value="ijazat">حلقة إجازات</option>
                                 </select>
                             </div>
 
                             <button onclick="verifyStudentLevel()"
-                                class="w-full py-3 bg-teal-600 hover:bg-teal-700 text-white font-bold rounded-xl shadow-lg mt-4 transition">
+                                class="w-full py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl shadow-lg mt-4 transition">
                                 متابعة
                             </button>
                         </div>
@@ -180,7 +182,7 @@
                             <div>
                                 <label class="block text-sm font-bold mb-2">اختر اسمك</label>
                                 <select id="student-name-select" aria-label="اختر اسمك"
-                                    class="w-full bg-gray-50 dark:bg-gray-800 border-2 border-gray-200 dark:border-gray-700 rounded-xl px-4 py-3 appearance-none focus:outline-none focus:border-teal-500">
+                                    class="w-full bg-gray-50 dark:bg-gray-800 border-2 border-gray-200 dark:border-gray-700 rounded-xl px-4 py-3 appearance-none focus:outline-none focus:border-emerald-500">
                                     <option value="" disabled selected>-- اختر --</option>
                                 </select>
                             </div>
@@ -188,7 +190,7 @@
                             <div>
                                 <label class="block text-sm font-bold mb-2">كلمة مرورك الشخصية</label>
                                 <input type="password" id="student-personal-password-input"
-                                    class="w-full bg-gray-50 dark:bg-gray-800 border-2 border-gray-200 dark:border-gray-700 rounded-xl px-4 py-3 text-center text-lg focus:outline-none focus:border-teal-500"
+                                    class="w-full bg-gray-50 dark:bg-gray-800 border-2 border-gray-200 dark:border-gray-700 rounded-xl px-4 py-3 text-center text-lg focus:outline-none focus:border-emerald-500"
                                     placeholder="كلمة المرور الشخصية">
                             </div>
 
@@ -213,19 +215,23 @@
 
                         <div id="teacher-password-section" class="space-y-4">
                             <div class="text-center mb-6">
-                                <p class="text-sm text-gray-500">اختر المرحلة ثم ادخل كلمة المرور</p>
+                                <p class="text-sm text-gray-500">اختر الحلقة ثم ادخل كلمة المرور</p>
                             </div>
 
                             <div>
-                                <label class="block text-sm font-bold mb-2">اختر المرحلة</label>
-                                <select id="teacher-level-select" title="اختر المرحلة" aria-label="اختر المرحلة"
+                                <label class="block text-sm font-bold mb-2">اختر الحلقة</label>
+                                <select id="teacher-level-select" title="اختر الحلقة" aria-label="اختر الحلقة"
                                     class="w-full bg-gray-50 dark:bg-gray-800 border-2 border-gray-200 dark:border-gray-700 rounded-xl px-4 py-3 appearance-none focus:outline-none focus:border-purple-500">
-                                    <option value="" disabled selected>-- اختر المرحلة --</option>
-                                    <option value="secondary">المرحلة الثانوية 🏢</option>
-                                    <option value="middle">المرحلة المتوسطة 🏫</option>
-                                    <option value="upper_elem">الابتدائية العليا 🎒</option>
-                                    <option value="lower_elem">الابتدائية الأولية 🧸</option>
+                                    <option value="" disabled selected>-- اختر الحلقة --</option>
+                                    <option value="ibn_umar">حلقة عبدالله بن عمر</option>
+                                    <option value="ijazat">حلقة إجازات</option>
                                 </select>
+                                <div class="mt-2 p-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-xl">
+                                    <p class="text-xs text-amber-700 dark:text-amber-300 font-bold mb-1">🔑 كلمات المرور للتجربة:</p>
+                                    <p class="text-[11px] text-amber-600 dark:text-amber-400">حلقة عبدالله بن عمر: <span class="font-mono font-bold">1234</span></p>
+                                    <p class="text-[11px] text-amber-600 dark:text-amber-400">حلقة إجازات: <span class="font-mono font-bold">5678</span></p>
+                                    <p class="text-[11px] text-amber-600 dark:text-amber-400">كلمة المرور الرئيسية: <span class="font-mono font-bold">112233</span></p>
+                                </div>
                             </div>
 
                             <input type="password" id="teacher-password-input"
@@ -240,7 +246,7 @@
 
                         <!-- Step 3: Teacher Level Selection (Only if Master Pass) -->
                         <div id="teacher-level-selection" class="hidden space-y-4">
-                            <h3 class="font-bold text-center mb-4">اختر المرحلة للإدارة</h3>
+                            <h3 class="font-bold text-center mb-4">اختر الحلقة للإدارة</h3>
                             <div id="teacher-level-grid" class="grid grid-cols-2 gap-3">
                                 <!-- Injected via JS -->
                             </div>
@@ -279,12 +285,88 @@
                                 البحث عن أبنائي
                             </button>
                         </div>
+                    </div> <!-- Closes p-6 -->
+                </div> <!-- Closes Auth Card (bg-white rounded-[2.5rem]) -->
+            </div> <!-- Closes relative w-full max-w-md -->
+            
+            <div class="fixed bottom-4 text-emerald-200/50 text-[10px]">v4.3.0</div>
+        </div> <!-- Closes #auth-overlay -->
+
+        <!-- Student Self-Registration Panel (Standalone Centered Modal) -->
+        <div id="student-register-panel" class="fixed inset-0 z-[200] bg-emerald-950 flex items-center justify-center p-4 hidden overflow-hidden animate-fade-in">
+            <!-- Premium Mesh Gradient -->
+            <div class="absolute inset-0 bg-gradient-to-br from-emerald-950 via-emerald-900 to-emerald-950"></div>
+            <div class="absolute inset-0 opacity-30 bg-mesh-gradient"></div>
+            
+            <div class="w-full max-w-md bg-white dark:bg-gray-900 rounded-3xl shadow-2xl p-8 relative z-10 overflow-hidden max-h-[90vh] overflow-y-auto custom-scrollbar">
+                    <div class="text-center mb-6">
+                        <div class="bg-emerald-100 dark:bg-emerald-900/30 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4 text-emerald-600 dark:text-emerald-400">
+                            <i data-lucide="user-plus" class="w-8 h-8"></i>
+                        </div>
+                        <h2 id="self-reg-title" class="text-2xl font-black text-emerald-800 dark:text-emerald-400">تسجيل طالب جديد 📝</h2>
+                        <p class="text-sm text-gray-500 mt-2">يرجى تعبئة بياناتك بدقة</p>
                     </div>
 
+                    <div class="space-y-4">
+                        <!-- Icon Selection -->
+                        <div>
+                            <label class="block text-sm font-bold mb-2">اختر أيقونة/صورة شخصية لك</label>
+                            <div class="flex items-center gap-4">
+                                <div id="self-reg-selected-icon" class="w-16 h-16 rounded-full bg-emerald-100 dark:bg-emerald-900/40 border-2 border-emerald-300 dark:border-emerald-700 flex items-center justify-center text-3xl shrink-0 overflow-hidden relative cursor-pointer hover:opacity-80 transition shadow-sm" onclick="openIconPickerForRegistration()">
+                                    👤
+                                    <div class="absolute inset-0 bg-black/20 flex items-center justify-center opacity-0 hover:opacity-100 transition-opacity">
+                                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-white"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+                                    </div>
+                                </div>
+                                <p class="text-xs text-gray-500">اضغط على الأيقونة لتغييرها</p>
+                            </div>
+                        </div>
+
+                        <div>
+                            <label id="self-reg-name-label" class="block text-sm font-bold mb-2">ما اسمك؟ (الاسم الرباعي)</label>
+                            <input type="text" id="self-reg-name" class="w-full bg-gray-50 dark:bg-gray-800 border-2 border-gray-200 dark:border-gray-700 rounded-xl px-4 py-3 focus:outline-none focus:border-emerald-500" placeholder="مثال: أحمد محمد عبدالله القحطاني">
+                        </div>
+
+                        <div>
+                            <label id="self-reg-id-label" class="block text-sm font-bold mb-2">رقم الهوية / السجل المدني</label>
+                            <input type="tel" id="self-reg-id" class="w-full bg-gray-50 dark:bg-gray-800 border-2 border-gray-200 dark:border-gray-700 rounded-xl px-4 py-3 focus:outline-none focus:border-emerald-500 text-left" dir="ltr" placeholder="1xxxxxxxxx" inputmode="numeric">
+                        </div>
+
+                        <div>
+                            <label id="self-reg-phone-label" class="block text-sm font-bold mb-2">رقم جوال ولي أمرك</label>
+                            <input type="tel" id="self-reg-phone" class="w-full bg-gray-50 dark:bg-gray-800 border-2 border-gray-200 dark:border-gray-700 rounded-xl px-4 py-3 focus:outline-none focus:border-emerald-500 text-left" dir="ltr" placeholder="05xxxxxxxx" inputmode="tel">
+                            <p class="text-xs text-gray-400 mt-1">يجب أن يكون رقماً صحيحاً لمتابعة أدائك</p>
+                        </div>
+                        
+                        <div>
+                            <label id="self-reg-last-test-label" class="block text-sm font-bold mb-2">آخر اختبار جمعية</label>
+                            <select id="self-reg-last-test" title="آخر اختبار جمعية" class="w-full bg-gray-50 dark:bg-gray-800 border-2 border-gray-200 dark:border-gray-700 rounded-xl px-4 py-3 focus:outline-none focus:border-emerald-500">
+                                <option value="لم يختبر">لم يختبر</option>
+                                <option value="1">1</option>
+                                <option value="2">2</option>
+                                <option value="3">3</option>
+                                <option value="5">5</option>
+                                <option value="8">8</option>
+                                <option value="10">10</option>
+                                <option value="15">15</option>
+                                <option value="20">20</option>
+                                <option value="25">25</option>
+                                <option value="30">30 (خاتم)</option>
+                            </select>
+                        </div>
+
+                        <div>
+                            <label id="self-reg-password-label" class="block text-sm font-bold mb-2">اختر كلمة مرور شخصية لك</label>
+                            <input type="text" id="self-reg-password" class="w-full bg-gray-50 dark:bg-gray-800 border-2 border-gray-200 dark:border-gray-700 rounded-xl px-4 py-3 focus:outline-none focus:border-emerald-500" placeholder="مثال: 1234 أو A123">
+                            <p class="text-[10px] text-gray-400 mt-1">يمكنك استخدام أرقام أو حروف إنجليزية</p>
+                        </div>
+
+                        <button id="self-reg-submit-btn" onclick="submitStudentSelfRegistration()" class="w-full py-4 bg-green-600 hover:bg-green-700 text-white font-bold rounded-xl shadow-lg mt-6 transition flex justify-center items-center gap-2 text-lg">
+                            إتمام التسجيل
+                            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="w-5 h-5"><path d="M5 12l5 5L20 7"/></svg>
+                        </button>
                 </div>
             </div>
-
-            <div class="fixed bottom-4 text-teal-200/50 text-[10px]">v4.3.0</div>
         </div>
 
         <!-- APP CONTENT WRAPPER -->
@@ -293,21 +375,20 @@
 
             <!-- Header - Fixed at top -->
             <header
-                class="bg-teal-700 text-white p-4 shadow-lg flex justify-between items-center rounded-b-2xl shrink-0"
-                style="padding-top: max(env(safe-area-inset-top, 20px), 20px);">
+                class="bg-emerald-700 text-white p-4 shadow-lg flex justify-between items-center rounded-b-2xl shrink-0 safe-pt">
                 <div class="flex items-center gap-3">
                     <i data-lucide="award" class="w-8 h-8 text-yellow-300"></i>
                     <div>
-                        <h1 class="font-bold text-lg leading-tight">مسابقات ابن تيمية</h1>
-                        <p class="text-teal-200 text-xs" id="current-mode-label">وضع الطالب</p>
+                        <h1 class="font-bold text-lg leading-tight">برنامج المتابعة - النسخة التجريبية</h1>
+                        <p class="text-emerald-200 text-xs" id="current-mode-label">وضع الطالب</p>
                     </div>
                 </div>
-                <div id="level-badge" class="hidden sm:block bg-teal-800 px-3 py-1 rounded-full text-xs font-bold mr-2">
+                <div id="level-badge" class="hidden sm:block bg-emerald-800 px-3 py-1 rounded-full text-xs font-bold mr-2">
                     <!-- Level Name Injected JS -->
                 </div>
                 <div class="flex-1"></div>
                 <!-- Logic changed: button now handles logout/status, binding in app.js -->
-                <button id="mode-btn" class="p-2 bg-teal-800 rounded-full hover:bg-teal-600 transition"
+                <button id="mode-btn" class="p-2 bg-emerald-800 rounded-full hover:bg-emerald-600 transition"
                     title="تسجيل الخروج">
                     <i data-lucide="shield" class="w-5 h-5"></i>
                 </button>
@@ -316,7 +397,7 @@
             <!-- Main Content Area - Scrollable -->
             <main id="main-content" class="flex-1 p-4 pb-24 overflow-y-auto">
                 <!-- Loading State -->
-                <div id="loading" class="flex flex-col items-center justify-center h-64 text-teal-600">
+                <div id="loading" class="flex flex-col items-center justify-center h-64 text-emerald-600">
                     <i data-lucide="loader-2" class="w-10 h-10 animate-spin mb-2"></i>
                     <p>جارٍ التحميل...</p>
                 </div>
@@ -332,25 +413,31 @@
                 <div class="pointer-events-auto w-full max-w-md bg-white dark:bg-gray-800 border-t border-gray-200 dark:border-gray-700 pb-safe rounded-t-2xl shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)]">
                     <div class="flex justify-around items-center p-2">
                         <button onclick="router.navigate('home')"
-                            class="nav-item flex flex-col items-center p-2 text-teal-600 dark:text-teal-400 transition"
+                            class="nav-item flex flex-col items-center p-2 text-emerald-600 dark:text-emerald-400 transition"
                             data-target="home">
                             <i data-lucide="home" class="w-6 h-6 mb-1"></i>
                             <span class="text-xs font-medium">الرئيسية</span>
                         </button>
                         <button onclick="router.navigate('competitions')"
-                            class="nav-item flex flex-col items-center p-2 text-gray-400 hover:text-teal-600 transition"
+                            class="nav-item flex flex-col items-center p-2 text-gray-400 hover:text-emerald-600 transition"
                             data-target="competitions">
                             <i data-lucide="trophy" class="w-6 h-6 mb-1"></i>
                             <span class="text-xs font-medium">المسابقات</span>
                         </button>
                         <button onclick="router.navigate('students')"
-                            class="nav-item flex flex-col items-center p-2 text-gray-400 hover:text-teal-600 transition"
+                            class="nav-item flex flex-col items-center p-2 text-gray-400 hover:text-emerald-600 transition"
                             data-target="students">
                             <i data-lucide="users" class="w-6 h-6 mb-1"></i>
                             <span class="text-xs font-medium">الطلاب</span>
                         </button>
+                        <button id="nav-direct-grading" onclick="router.navigate('direct_grading')"
+                            class="nav-item flex flex-col items-center p-2 text-gray-400 hover:text-emerald-600 transition hidden"
+                            data-target="direct_grading">
+                            <i data-lucide="activity" class="w-6 h-6 mb-1"></i>
+                            <span class="text-xs font-medium">الرصد</span>
+                        </button>
                         <button onclick="router.navigate('settings')"
-                            class="nav-item flex flex-col items-center p-2 text-gray-400 hover:text-teal-600 transition"
+                            class="nav-item flex flex-col items-center p-2 text-gray-400 hover:text-emerald-600 transition"
                             data-target="settings">
                             <i data-lucide="settings" class="w-6 h-6 mb-1"></i>
                             <span class="text-xs font-medium">الإعدادات</span>
@@ -364,7 +451,7 @@
         <!-- Inner Modals (Student, Competition, etc) -->
         <!-- Multi-purpose Password Modal -->
         <div id="password-modal"
-            class="fixed inset-0 bg-black/60 z-[90] hidden flex items-center justify-center p-4 backdrop-blur-sm">
+            class="fixed inset-0 bg-black/60 z-[300] hidden flex items-center justify-center p-4 backdrop-blur-sm">
             <div class="bg-white dark:bg-gray-800 rounded-2xl w-full max-w-sm p-6 shadow-2xl">
                 <h3 class="font-bold text-lg mb-4 text-center">🔐 التحقق من الهوية</h3>
                 <p id="password-modal-msg" class="text-gray-500 text-sm text-center mb-4">يرجى إدخال كلمة المرور
@@ -375,7 +462,110 @@
                     <button onclick="resolvePasswordModal(null)"
                         class="flex-1 py-3 rounded-xl bg-gray-100 hover:bg-gray-200 dark:bg-gray-700">إلغاء</button>
                     <button onclick="submitPasswordModal()"
-                        class="flex-1 py-3 bg-teal-600 text-white rounded-xl font-bold hover:bg-teal-700">تأكيد</button>
+                        class="flex-1 py-3 bg-emerald-600 text-white rounded-xl font-bold hover:bg-emerald-700">تأكيد</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Registration Link Modal -->
+        <div id="registration-link-modal" class="fixed inset-0 bg-black/60 z-[200] hidden flex items-center justify-center p-4 backdrop-blur-sm animate-fade-in">
+            <div class="bg-white dark:bg-gray-800 rounded-3xl w-full max-w-sm p-6 shadow-2xl relative overflow-hidden">
+                <div class="absolute -right-10 -top-10 bg-emerald-500/10 w-32 h-32 rounded-full blur-2xl"></div>
+                
+                <div class="flex justify-between items-center mb-6 relative z-10">
+                    <div class="flex items-center gap-3">
+                        <div class="bg-emerald-100 dark:bg-emerald-900/40 p-2 rounded-xl text-emerald-600 dark:text-emerald-400">
+                            <i data-lucide="link" class="w-6 h-6"></i>
+                        </div>
+                        <h3 class="font-bold text-lg text-gray-800 dark:text-white">رابط التسجيل</h3>
+                    </div>
+                    <button onclick="closeModal('registration-link-modal')" class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors" title="إغلاق">
+                        <i data-lucide="x" class="w-5 h-5"></i>
+                    </button>
+                </div>
+
+                <div class="relative z-10 space-y-4 text-center">
+                    <div class="bg-gray-50 dark:bg-gray-900 p-4 rounded-xl border border-gray-200 dark:border-gray-700">
+                        <p class="text-[11px] text-gray-500 mb-2 font-bold select-none">رابط الحلقة المخصص:</p>
+                        <p id="registration-link-display" class="text-xs text-emerald-700 dark:text-emerald-400 font-mono break-all select-all dir-ltr"></p>
+                    </div>
+                    
+                    <p class="text-xs text-gray-500">أرسل هذا الرابط ليتمكنوا من التسجيل بأنفسهم.</p>
+                    
+                    <button id="copy-registration-link-btn" class="w-full py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl shadow-lg transition flex justify-center items-center gap-2">
+                        <i data-lucide="copy" class="w-5 h-5"></i>
+                        نسخ الرابط
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <div id="emoji-picker-modal" class="fixed inset-0 bg-black/50 z-[300] hidden flex items-center justify-center p-4 backdrop-blur-sm">
+            <div class="bg-white dark:bg-gray-800 rounded-2xl w-full max-w-xs p-4 shadow-2xl">
+                <h3 class="font-bold text-center mb-4">اختر إيموجي</h3>
+                <div id="emoji-grid" class="grid grid-cols-5 gap-2 max-h-60 overflow-y-auto"></div>
+                <button onclick="closeModal('emoji-picker-modal')" class="w-full mt-4 py-2 rounded-xl bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 font-medium">إغلاق</button>
+            </div>
+        </div>
+
+        <div id="delete-modal" class="fixed inset-0 bg-black/50 z-[300] hidden flex items-center justify-center p-4 backdrop-blur-sm">
+            <div class="bg-white dark:bg-gray-800 rounded-2xl w-full max-w-xs p-6 shadow-2xl text-center">
+                <div class="bg-red-100 dark:bg-red-900/30 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4 text-red-600 dark:text-red-400">
+                    <i data-lucide="alert-triangle" class="w-8 h-8"></i>
+                </div>
+                <h3 class="font-bold text-lg mb-2">تأكيد الحذف</h3>
+                <p class="text-gray-500 text-sm mb-6">لا يمكن التراجع عن هذه العملية.</p>
+                <div class="flex gap-3">
+                    <button onclick="closeModal('delete-modal')" class="flex-1 py-2 rounded-xl bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600">إلغاء</button>
+                    <button id="confirm-delete-btn" class="flex-1 py-2 rounded-xl bg-red-600 text-white hover:bg-red-700 shadow-lg">حذف</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Collective Note Modal -->
+        <div id="collective-note-modal" class="fixed inset-0 bg-black/60 z-[200] hidden flex items-center justify-center p-4 backdrop-blur-sm animate-fade-in">
+            <div class="bg-white dark:bg-gray-800 rounded-3xl w-full max-w-md p-6 shadow-2xl relative overflow-hidden flex flex-col max-h-[90vh]">
+                <div class="absolute -right-10 -top-10 bg-purple-500/10 w-32 h-32 rounded-full blur-2xl pointer-events-none"></div>
+                
+                <div class="flex justify-between items-center mb-6 relative z-10 shrink-0">
+                    <div class="flex items-center gap-3">
+                        <div class="bg-purple-100 dark:bg-purple-900/40 p-2 rounded-xl text-purple-600 dark:text-purple-400">
+                            <i data-lucide="message-square" class="w-6 h-6"></i>
+                        </div>
+                        <h3 class="font-bold text-lg text-gray-800 dark:text-white">ملاحظة جماعية</h3>
+                    </div>
+                    <button onclick="closeModal('collective-note-modal')" class="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 transition-colors" title="إغلاق">
+                        <i data-lucide="x" class="w-5 h-5"></i>
+                    </button>
+                </div>
+
+                <div class="relative z-10 space-y-4 overflow-y-auto custom-scrollbar flex-1 pr-2">
+                    <p class="text-xs text-gray-500">سيتم إرسال هذه الملاحظة لجميع الطلاب الظاهرين في القائمة الحالية (الحلقة أو المجموعة).</p>
+                    
+                    <div>
+                        <label class="block text-sm font-bold mb-2">تاريخ الملاحظة</label>
+                        <input type="date" id="collective-note-date" title="تاريخ الملاحظة" class="w-full bg-gray-50 dark:bg-gray-700 border-2 border-gray-200 dark:border-gray-600 rounded-xl px-4 py-3 focus:outline-none focus:border-purple-500" dir="ltr">
+                    </div>
+
+                    <div>
+                        <label class="block text-sm font-bold mb-2">نص الملاحظة</label>
+                        <textarea id="collective-note-text" rows="3" class="w-full bg-gray-50 dark:bg-gray-700 border-2 border-gray-200 dark:border-gray-600 rounded-xl px-4 py-3 focus:outline-none focus:border-purple-500" placeholder="اكتب الملاحظة هنا..."></textarea>
+                    </div>
+                    
+                    <div id="collective-note-visibility-container">
+                        <label class="block text-sm font-bold mb-2">من يمكنه رؤية الملاحظة؟</label>
+                        <select id="collective-note-visibility" title="صلاحية الرؤية" class="w-full bg-gray-50 dark:bg-gray-700 border-2 border-gray-200 dark:border-gray-600 rounded-xl px-4 py-3 focus:outline-none focus:border-purple-500">
+                            <option value="student">الطالب فقط</option>
+                            <option value="parent">الطالب وولي الأمر</option>
+                        </select>
+                    </div>
+                </div>
+                
+                <div class="mt-6 pt-4 border-t border-gray-100 dark:border-gray-700 shrink-0">
+                    <button onclick="submitCollectiveNote()" class="w-full py-3 bg-purple-600 hover:bg-purple-700 text-white font-bold rounded-xl shadow-lg transition flex justify-center items-center gap-2">
+                        <i data-lucide="send" class="w-5 h-5"></i>
+                        إرسال للجميع
+                    </button>
                 </div>
             </div>
         </div>
@@ -387,7 +577,7 @@
 
     <!-- Toast Notification (Moved to root for Z-Index) -->
     <div id="toast"
-        class="fixed top-20 left-1/2 -translate-x-1/2 px-6 py-3 rounded-full shadow-lg z-[9999] hidden transition-all duration-300 flex items-center gap-3 min-w-[200px] justify-center text-white bg-gray-800">
+        class="fixed top-20 inset-x-0 mx-auto w-max px-6 py-3 rounded-full shadow-lg z-[9999] hidden transition-all duration-300 flex items-center gap-3 min-w-[200px] justify-center text-white bg-gray-800">
         <i data-lucide="info" class="w-5 h-5"></i>
         <span id="toast-msg">تمت العملية بنجاح</span>
     </div>

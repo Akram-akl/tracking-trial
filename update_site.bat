@@ -1,28 +1,29 @@
 @echo off
 chcp 65001 >nul
+title Trial Version Site Updater
 echo ==========================================
-echo    أداة تحديث الموقع (Ibn Taymiyyah Updater)
+echo    Trial Version Site Updater
 echo ==========================================
 echo.
-echo جاري تحضير الملفات...
+echo 1. Checking changes...
 git add .
 
 echo.
-set /p commit_msg="ماذا قمت بتعديله؟ (اكتب وصفاً مختصراً): "
+set /p commit_msg="Enter commit message: "
 
-if "%commit_msg%"=="" set commit_msg="تحديث عام"
+if "%commit_msg%"=="" set commit_msg="General update"
 
 echo.
-echo جاري الحفظ والإرسال...
+echo 2. Committing locally...
 git commit -m "%commit_msg%"
 
 echo.
-echo جاري الرفع إلى الخادم...
-git push
+echo 3. Pushing to GitHub...
+git config credential.https://github.com.username akramakl
+git push origin main
 
 echo.
 echo ==========================================
-echo ✅ تم الإرسال بنجاح!
-echo سيقوم Cloudflare بتحديث الموقع تلقائياً خلال ثوانٍ.
+echo Done! Cloudflare will auto-update shortly.
 echo ==========================================
 pause

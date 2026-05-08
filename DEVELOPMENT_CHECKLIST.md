@@ -1,7 +1,7 @@
-# 📋 دليل التطوير والمراجعة — مسابقات ابن تيمية
+# 📋 دليل التطوير والمراجعة — برنامج المتابعة (النسخة التجريبية)
 
 > هذا الملف يحتوي على كل الأوامر والنقاط الجوهرية التي يجب مراجعتها مع كل تعديل.
-> **آخر تحديث:** 2026-05-01
+> **آخر تحديث:** 2026-05-06
 
 > [!CAUTION]
 > ### ⛔ قاعدة إلزامية قبل أي تعديل:
@@ -51,11 +51,11 @@ NOTIFY pgrst, 'reload schema';
 ### الـ State المركزي (app.js):
 ```javascript
 const state = {
-    currentLevel: '',      // المرحلة الحالية (secondary, middle, upper_elem, lower_elem)
+    currentLevel: '',      // الحلقة الحالية (ibn_umar, ijazat [hidden])
     isTeacher: false,      // هل المستخدم معلم؟
     isParent: false,       // هل المستخدم ولي أمر؟
     parentPhone: '',       // رقم جوال ولي الأمر
-    students: [],          // طلاب المرحلة الحالية
+    students: [],          // طلاب الحلقة الحالية
     competitions: [],      // المسابقات
     groups: [],            // المجموعات
     scores: [],            // الدرجات
@@ -67,7 +67,7 @@ const state = {
 
 ### 📅 نظام جدولة أيام الأسبوع (Week Scheduling)
 
-**المبدأ:** كل حلقة (ثانوية / متوسطة / ابتدائية عليا / أولية) لها أيام أسبوع خاصة بها، يحددها المعلم من الإعدادات.
+**المبدأ:** كل حلقة (أبوبكر، عمر، عثمان، علي، ابن مسعود، معاذ، إجازات) لها أيام أسبوع خاصة بها، يحددها المعلم من الإعدادات.
 
 **التخزين:** جدول `level_settings` بـ `feature_name = 'week_days'` + عمود `level` لعزل كل حلقة.
 
@@ -115,6 +115,11 @@ ALTER TABLE new_table ENABLE ROW LEVEL SECURITY;
 CREATE POLICY "Allow all" ON new_table FOR ALL USING (true) WITH CHECK (true);
 ```
 
+### 3. إعدادات الاتصال بقاعدة البيانات (Supabase API Keys):
+- **الرابط (Project URL):** `https://[PROJECT_ID].supabase.co` (تأكد دائماً من إزالة `/rest/v1/` من النهاية إن وجدت). يتم الحصول عليه من `Data API` أو `General` في إعدادات المشروع.
+- **المفتاح العام (Publishable / anon key):** يبدأ بـ `sb_publishable_...`. وهو المفتاح الوحيد الآمن للاستخدام في ملف `supabase.js` لأن الحماية تعتمد على `RLS`.
+- ⚠️ **تحذير أمني خطير:** لا تستخدم أبدًا المفتاح السري (Secret key / `sb_secret_...`) في ملفات الكود (مثل `supabase.js`)، لأنه يعطي صلاحيات "أدمن" كاملة ويتجاوز كل قواعد الأمان، ويمكن لأي شخص سرقته وتدمير قاعدة البيانات بالكامل.
+
 ---
 
 ## 🔍 قائمة المراجعة مع كل تعديل
@@ -137,15 +142,20 @@ CREATE POLICY "Allow all" ON new_table FOR ALL USING (true) WITH CHECK (true);
 
 | الجدول | الوصف | الحقول الرئيسية |
 |---|---|---|
-| `students` | بيانات الطلاب | `id, name, studentNumber, parentPhone, level, icon, password` |
-| `competitions` | المسابقات | `id, name, icon, criteria[], level, active, absentExcuse, absentNoExcuse, activityPoints` |
-| `scores` | درجات الطلاب | `id, studentId, competitionId, groupId, criteriaId, points, type, date` |
+| `students` | بيانات الطلاب والدارسين | `id, name, studentNumber, parentPhone, national_id, level, icon, password` |
+| `competitions` | المسابقات | `id, name, icon, criteria[], level, active, absentExcuse, activityPoints, memorization_points...` |
+| `scores` | درجات الطلاب والتقييمات | `id, studentId, competitionId, groupId, criteriaId, points, type, date, quran_grade...` |
 | `groups` | المجموعات | `id, name, icon, competitionId, leader, deputy, members[], level` |
 | `activity_days` | سجل أيام النشاط | `id, competitionId, date, points` |
 | `group_scores` | نقاط المجموعات المستقلة | `id, groupId, competitionId, reason, points, date` |
 | `teachers` | بيانات المعلمين | `id, name, phone, level` |
+| `student_plans` | خطط الحفظ والمراجعة (المنهج) | `id, student_id, plan_type, start_date, end_date, start_sura...` |
+| `plan_daily_records` | السجل اليومي لخطط الحفظ | `id, plan_id, student_id, date, status, actual_start_page...` |
 | `level_settings` | إعدادات مخصصة لكل مرحلة | `id, level, feature_name, is_enabled, settings` |
 | `feedback` | بلاغات الأخطاء والاقتراحات | `id, type, message, level, role, user_agent` |
+| `transfer_requests` | طلبات نقل الطلاب بين الحلقات | `id, student_id, from_level, to_level, delete_old_data, status` |
+| `audit_log` | سجل التدقيق الأمني للعمليات | `id, action, entity_type, entity_id, details, level, role` |
+| `backups` | النسخ الاحتياطي التلقائي الأسبوعي | `id, level, backup_data, created_at` |
 
 ### معرّفات خاصة (criteriaId):
 | المعرّف | الاستخدام |
@@ -251,6 +261,7 @@ const router = {
 | إدارة المسابقات | ✅ يعمل | معايير مخصصة + غياب + نشاط |
 | المجموعات | ✅ يعمل | قائد + نائب + أعضاء |
 | رصد الدرجات | ✅ يعمل | يستبدل بدل التكرار |
+| الرصد المباشر السريع | ✅ يعمل | رصد درجات وغياب مباشر بدون الارتباط بمسابقة، يمكن تفعيله/إلغاؤه من الإعدادات |
 | تسجيل حفظ / مراجعة القرآن | ✅ يعمل | نطاقات سور وآيات |
 | تقويم شهري للطالب | ✅ يعمل | مع تفاصيل كل يوم |
 | ترتيب الطالب (Ranking) | ✅ يعمل | ترتيب وتوجه أداء أسبوعي |
@@ -261,11 +272,15 @@ const router = {
 | بوابة ولي الأمر | ✅ يعمل | بحث بالرقم + تقرير الابن مع الترتيب |
 | بحث في المصحف | ✅ يعمل | بحث نصي مباشر |
 | نقاط مخصصة (إيجابي/سلبي) | ✅ يعمل | للطالب أو المجموعة |
-| ملاحظات نصية للطالب | ✅ يعمل | ملاحظة من المعلم للطالب وولي الأمر |
+| ملاحظات نصية للطالب | ✅ يعمل | ملاحظة من المعلم للطالب وولي الأمر + نظام **ملاحظات جماعية** مطور مع معالجة Batch |
 | تصفير درجات الطالب | ✅ يعمل | زر تصفير مع تأكيد |
 | نظام بلاغات واقتراحات | ✅ يعمل | مرتبط بقاعدة البيانات مباشرة |
+| نقل الطلاب بين الحلقات | ✅ يعمل | عبر transfer_requests مع خيار حذف/نقل البيانات |
 | سجل التدقيق (Audit Log) | ✅ يعمل | لتسجيل الحذف وتعديل المعايير والأمان |
-| النسخ الاحتياطي التلقائي | ✅ يعمل | يعمل في الخلفية للمعلم كل 7 أيام |
+| النسخ الاحتياطي التلقائي | ✅ يعمل | يعمل بصمت في الخلفية للمعلم (Supabase backups table) |
+| مصطلحات البالغين (إجازات) | ✅ يعمل | استخدام `getLabel()` لتغيير "طالب/ولي أمر" إلى "دارس/شخصي" حسب الحلقة |
+| رابط تسجيل ذاتي (Modal) | ✅ يعمل | نظام التسجيل الذاتي للطلاب الجدد مع **خيارات منسدلة موحدة** لاختبار الجمعية وتصحيح ربط البيانات (الهوية/الجوال) |
+| خطط الحفظ (المنهج) | ✅ يعمل | خطط الحفظ والمراجعة والسجلات اليومية للطلاب |
 | جدولة أيام الأسبوع | ✅ يعمل | إعدادات مخصصة لكل مرحلة |
 | نقاط مستقلة للمجموعة | ✅ يعمل | group_scores جدول مستقل |
 | يوم نشاط | ✅ يعمل | مع تسجيل الغياب + WhatsApp |

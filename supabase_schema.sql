@@ -1,5 +1,5 @@
 -- =====================================================
--- Supabase Schema for Ibn Taymiyyah Competitions App
+-- Supabase Schema for برنامج المتابعة - النسخة التجريبية
 -- =====================================================
 
 -- 1. Students Table
@@ -35,14 +35,14 @@ CREATE TABLE IF NOT EXISTS competitions (
     level TEXT NOT NULL,
     active BOOLEAN DEFAULT FALSE,
     criteria JSONB DEFAULT '[]'::jsonb,
-    absent_excuse INTEGER DEFAULT 1,
-    absent_no_excuse INTEGER DEFAULT 4,
-    activity_points INTEGER DEFAULT 0,
-    activity_absent_points INTEGER DEFAULT 0,
-    memorization_points INTEGER DEFAULT 0,
-    memorization_negative_points INTEGER DEFAULT 0,
-    review_points INTEGER DEFAULT 0,
-    review_negative_points INTEGER DEFAULT 0,
+    absent_excuse NUMERIC DEFAULT 1,
+    absent_no_excuse NUMERIC DEFAULT 4,
+    activity_points NUMERIC DEFAULT 0,
+    activity_absent_points NUMERIC DEFAULT 0,
+    memorization_points NUMERIC DEFAULT 0,
+    memorization_negative_points NUMERIC DEFAULT 0,
+    review_points NUMERIC DEFAULT 0,
+    review_negative_points NUMERIC DEFAULT 0,
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
@@ -50,22 +50,22 @@ CREATE TABLE IF NOT EXISTS competitions (
 DO $$ 
 BEGIN 
     IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='competitions' AND column_name='activity_points') THEN
-        ALTER TABLE competitions ADD COLUMN activity_points INTEGER DEFAULT 0;
+        ALTER TABLE competitions ADD COLUMN activity_points NUMERIC DEFAULT 0;
     END IF;
     IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='competitions' AND column_name='activity_absent_points') THEN
-        ALTER TABLE competitions ADD COLUMN activity_absent_points INTEGER DEFAULT 0;
+        ALTER TABLE competitions ADD COLUMN activity_absent_points NUMERIC DEFAULT 0;
     END IF;
     IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='competitions' AND column_name='memorization_points') THEN
-        ALTER TABLE competitions ADD COLUMN memorization_points INTEGER DEFAULT 0;
+        ALTER TABLE competitions ADD COLUMN memorization_points NUMERIC DEFAULT 0;
     END IF;
     IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='competitions' AND column_name='memorization_negative_points') THEN
-        ALTER TABLE competitions ADD COLUMN memorization_negative_points INTEGER DEFAULT 0;
+        ALTER TABLE competitions ADD COLUMN memorization_negative_points NUMERIC DEFAULT 0;
     END IF;
     IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='competitions' AND column_name='review_points') THEN
-        ALTER TABLE competitions ADD COLUMN review_points INTEGER DEFAULT 0;
+        ALTER TABLE competitions ADD COLUMN review_points NUMERIC DEFAULT 0;
     END IF;
     IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='competitions' AND column_name='review_negative_points') THEN
-        ALTER TABLE competitions ADD COLUMN review_negative_points INTEGER DEFAULT 0;
+        ALTER TABLE competitions ADD COLUMN review_negative_points NUMERIC DEFAULT 0;
     END IF;
 END $$;
 
@@ -91,7 +91,7 @@ CREATE TABLE IF NOT EXISTS scores (
     group_id UUID,
     criteria_id TEXT,
     criteria_name TEXT,
-    points INTEGER NOT NULL,
+    points NUMERIC NOT NULL,
     type TEXT,
     level TEXT,
     "date" TEXT,
@@ -106,7 +106,8 @@ CREATE TABLE IF NOT EXISTS scores (
     quran_end_aya INTEGER,
     quran_grade TEXT,
     note_text TEXT,
-    visibility TEXT
+    visibility TEXT,
+    is_collective BOOLEAN DEFAULT FALSE
 );
 
 DO $$ 
@@ -127,6 +128,9 @@ BEGIN
     IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='scores' AND column_name='visibility') THEN
         ALTER TABLE scores ADD COLUMN visibility TEXT;
     END IF;
+    IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='scores' AND column_name='is_collective') THEN
+        ALTER TABLE scores ADD COLUMN is_collective BOOLEAN DEFAULT FALSE;
+    END IF;
 END $$;
 
 -- 5. Teachers Table
@@ -144,7 +148,7 @@ CREATE TABLE IF NOT EXISTS activity_days (
     id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
     competition_id UUID REFERENCES competitions(id) ON DELETE CASCADE,
     date TEXT NOT NULL,
-    points INTEGER NOT NULL,
+    points NUMERIC NOT NULL,
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
@@ -155,7 +159,7 @@ CREATE TABLE IF NOT EXISTS group_scores (
     group_id UUID REFERENCES groups(id) ON DELETE CASCADE,
     competition_id UUID REFERENCES competitions(id) ON DELETE CASCADE,
     reason TEXT,
-    points INTEGER NOT NULL,
+    points NUMERIC NOT NULL,
     type TEXT,
     level TEXT,
     date TEXT,
@@ -236,6 +240,18 @@ CREATE TABLE IF NOT EXISTS feedback (
     updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+-- 12. Transfer Requests Table
+CREATE TABLE IF NOT EXISTS transfer_requests (
+    id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
+    student_id UUID REFERENCES students(id) ON DELETE CASCADE,
+    from_level TEXT NOT NULL,
+    to_level TEXT NOT NULL,
+    delete_old_data BOOLEAN DEFAULT FALSE,
+    status TEXT DEFAULT 'pending', -- 'pending', 'rejected'
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
 -- =====================================================
 -- Enable Row Level Security (RLS)
 -- =====================================================
@@ -250,6 +266,7 @@ ALTER TABLE student_plans ENABLE ROW LEVEL SECURITY;
 ALTER TABLE plan_daily_records ENABLE ROW LEVEL SECURITY;
 ALTER TABLE level_settings ENABLE ROW LEVEL SECURITY;
 ALTER TABLE feedback ENABLE ROW LEVEL SECURITY;
+ALTER TABLE transfer_requests ENABLE ROW LEVEL SECURITY;
 
 -- =====================================================
 -- Create Policies (Using DROP IF EXISTS for idempotency)
@@ -375,8 +392,10 @@ DROP POLICY IF EXISTS "Allow public read level_settings" ON level_settings;
 DROP POLICY IF EXISTS "Allow public insert level_settings" ON level_settings;
 DROP POLICY IF EXISTS "Allow public update level_settings" ON level_settings;
 DROP POLICY IF EXISTS "Allow public delete level_settings" ON level_settings;
-DROP POLICY IF EXISTS "Allow public read level_settings" ON level_settings;
-CREATE POLICY "Allow public read level_settings" ON level_settings FOR SELECT USING (true);
+DROP POLICY IF EXISTS "Hide passwords from level_settings" ON level_settings;
+-- SECURITY: Hide password records from direct reads (verify_password RPC still works as SECURITY DEFINER)
+CREATE POLICY "Hide passwords from level_settings" ON level_settings FOR SELECT
+  USING (feature_name NOT IN ('auth_passwords', 'master_password'));
 DROP POLICY IF EXISTS "Allow public insert level_settings" ON level_settings;
 CREATE POLICY "Allow public insert level_settings" ON level_settings FOR INSERT WITH CHECK (true);
 DROP POLICY IF EXISTS "Allow public update level_settings" ON level_settings;
@@ -396,6 +415,9 @@ DROP POLICY IF EXISTS "Allow public update feedback" ON feedback;
 CREATE POLICY "Allow public update feedback" ON feedback FOR UPDATE USING (true);
 DROP POLICY IF EXISTS "Allow public delete feedback" ON feedback;
 CREATE POLICY "Allow public delete feedback" ON feedback FOR DELETE USING (true);
+
+DROP POLICY IF EXISTS "Allow public all transfer_requests" ON transfer_requests;
+CREATE POLICY "Allow public all transfer_requests" ON transfer_requests FOR ALL USING (true) WITH CHECK (true);
 
 -- =====================================================
 -- Enable Realtime
@@ -429,6 +451,9 @@ BEGIN
     IF NOT EXISTS (SELECT 1 FROM pg_publication_tables WHERE pubname = 'supabase_realtime' AND tablename = 'feedback') THEN
         ALTER PUBLICATION supabase_realtime ADD TABLE feedback;
     END IF;
+    IF NOT EXISTS (SELECT 1 FROM pg_publication_tables WHERE pubname = 'supabase_realtime' AND tablename = 'transfer_requests') THEN
+        ALTER PUBLICATION supabase_realtime ADD TABLE transfer_requests;
+    END IF;
 END $$;
 
 
@@ -460,7 +485,8 @@ CREATE TABLE IF NOT EXISTS backups (
     id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
     level TEXT NOT NULL,
     backup_data JSONB NOT NULL,
-    created_at TIMESTAMPTZ DEFAULT NOW()
+    created_at TIMESTAMPTZ DEFAULT NOW(),
+    updated_at TIMESTAMPTZ DEFAULT NOW()
 );
 
 ALTER TABLE backups ENABLE ROW LEVEL SECURITY;
@@ -513,7 +539,7 @@ RETURNS TABLE(student_id UUID, student_name TEXT, total_points BIGINT) AS $$
 BEGIN
     RETURN QUERY
     SELECT s.id, s.name,
-           COALESCE(SUM(sc.points), 0)::BIGINT as total
+           COALESCE(SUM(sc.points), 0)::NUMERIC as total
     FROM students s
     LEFT JOIN scores sc ON sc.student_id = s.id
         AND (p_competition_id IS NULL OR sc.competition_id = p_competition_id)
@@ -528,11 +554,9 @@ DELETE FROM level_settings WHERE feature_name IN ('auth_passwords', 'master_pass
 
 INSERT INTO level_settings (level, feature_name, is_enabled, settings)
 VALUES 
-    ('secondary', 'auth_passwords', true, '{"teacherPass": "1001"}'::jsonb),
-    ('middle', 'auth_passwords', true, '{"teacherPass": "2002"}'::jsonb),
-    ('upper_elem', 'auth_passwords', true, '{"teacherPass": "3003"}'::jsonb),
-    ('lower_elem', 'auth_passwords', true, '{"teacherPass": "4004"}'::jsonb),
-    ('_global', 'master_password', true, '{"password": "123456"}'::jsonb);
+    ('ibn_umar', 'auth_passwords', true, '{"teacherPass": "1234"}'::jsonb),
+    ('ijazat', 'auth_passwords', true, '{"teacherPass": "5678"}'::jsonb),
+    ('_global', 'master_password', true, '{"password": "112233"}'::jsonb);
 
 -- =====================================================
 -- Create Indexes
