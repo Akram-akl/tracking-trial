@@ -1243,24 +1243,62 @@ function openTransferStudent(studentId) {
     const student = state.students.find(s => s.id === studentId);
     if (!student) return;
 
-    // تعبئة بيانات النافذة
-    $('#transfer-student-id').value = studentId;
-    $('#transfer-student-name').textContent = `نقل "${student.name}" إلى مرحلة أخرى`;
+    // Close any open modal (like rate-student-modal from direct grading)
+    closeModal('rate-student-modal');
 
-    // تعبئة قائمة المراحل (استثناء المرحلة الحالية)
-    const select = $('#transfer-target-level');
-    select.innerHTML = '<option value="">-- اختر المرحلة --</option>';
-
+    // Build levels dropdown HTML
+    let levelsHtml = '';
     Object.entries(LEVELS).forEach(([key, val]) => {
         if (key !== state.currentLevel && !val.hidden) {
-            const option = document.createElement('option');
-            option.value = key;
-            option.textContent = val.name;
-            select.appendChild(option);
+            levelsHtml += `<option value="${key}">${val.name}</option>`;
         }
     });
 
-    toggleModal('transfer-modal', true);
+    // Remove existing transfer modal if any
+    const existingModal = document.getElementById('transfer-modal');
+    if (existingModal) existingModal.remove();
+
+    // Create dynamic transfer modal
+    const modalHtml = `
+        <div id="transfer-modal" class="fixed inset-0 bg-black/50 z-[110] flex items-center justify-center p-4 backdrop-blur-sm animate-fade-in">
+            <div class="bg-white dark:bg-gray-800 rounded-2xl w-full max-w-md p-6 shadow-2xl">
+                <div class="flex items-center gap-3 mb-4 text-blue-600 dark:text-blue-400">
+                    <i data-lucide="arrow-right-left" class="w-6 h-6"></i>
+                    <h3 class="text-lg font-bold">طلب نقل ال${getLabel('student')}: ${student.name}</h3>
+                </div>
+
+                <div class="space-y-4">
+                    <div>
+                        <label class="block text-sm font-bold mb-1">إلى أي حلقة تريد نقل ال${getLabel('student')}؟</label>
+                        <select id="transfer-to-level" class="w-full bg-gray-50 dark:bg-gray-700 border border-gray-200 rounded-xl px-4 py-3">
+                            <option value="">-- اختر الحلقة --</option>
+                            ${levelsHtml}
+                        </select>
+                    </div>
+                    
+                    <div class="bg-red-50 dark:bg-red-900/20 p-3 rounded-xl border border-red-100 dark:border-red-900/30">
+                        <label class="flex items-start gap-3 cursor-pointer">
+                            <input type="checkbox" id="transfer-delete-data" class="mt-1 w-4 h-4 text-red-600">
+                            <div>
+                                <span class="block text-sm font-bold text-red-800 dark:text-red-300">مسح بيانات ال${getLabel('student')} في حلقتي</span>
+                                <span class="block text-xs text-red-600 dark:text-red-400 mt-1">إذا قمت بتحديد هذا الخيار، سيتم حذف جميع درجات ومراجعات ال${getLabel('student')} المسجلة باسم حلقتك (بشكل نهائي) بمجرد قبول المعلم الآخر للطلب. إذا تركته فارغاً سيتم الاحتفاظ بدرجاته كأرشيف لحلقتك.</span>
+                            </div>
+                        </label>
+                    </div>
+                </div>
+
+                <div class="flex gap-3 mt-6">
+                    <button type="button" onclick="document.getElementById('transfer-modal').remove()" class="flex-1 py-3 rounded-xl text-gray-600 hover:bg-gray-100 font-bold transition">إلغاء</button>
+                    <button type="button" onclick="submitTransferRequest('${studentId}', '${state.currentLevel}')" class="flex-1 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold transition flex items-center justify-center gap-2">
+                        <i data-lucide="send" class="w-4 h-4"></i>
+                        إرسال الطلب
+                    </button>
+                </div>
+            </div>
+        </div>
+    `;
+
+    document.body.insertAdjacentHTML('beforeend', modalHtml);
     lucide.createIcons();
 }
 
@@ -1466,7 +1504,7 @@ function renderSettings() {
              </div>
 
              <div class="text-center text-xs text-gray-400 mt-8 mb-4">
-                 <p>برنامج المتابعة - النسخة التجريبية - إصدار v4.4.0</p>
+                 <p>برنامج المتابعة - إصدار v4.4.0</p>
                  <p class="opacity-50 mt-1 font-light">تم إنشاء هذا التطبيق بواسطة أكرم عقل</p>
              </div>
         </div>
@@ -4004,6 +4042,38 @@ async function handleSaveStudent(e) {
         password: $('#student-password-edit').value, // Student Password
         updatedAt: new Date()
     };
+
+    // Duplicate Check for NEW students
+    if (!id) {
+        try {
+            // Check by name
+            const nameQ = window.firebaseOps.query(
+                window.firebaseOps.collection(window.db, "students"),
+                window.firebaseOps.where("name", "==", data.name.trim())
+            );
+            const nameSnap = await window.firebaseOps.getDocs(nameQ);
+            
+            let isDuplicate = !nameSnap.empty;
+
+            // Check by national ID if > 5 digits
+            if (!isDuplicate && data.nationalId && data.nationalId.trim().length > 5) {
+                const idQ = window.firebaseOps.query(
+                    window.firebaseOps.collection(window.db, "students"),
+                    window.firebaseOps.where("nationalId", "==", data.nationalId.trim())
+                );
+                const idSnap = await window.firebaseOps.getDocs(idQ);
+                isDuplicate = !idSnap.empty;
+            }
+
+            if (isDuplicate) {
+                showToast("هذا الطالب مسجل مسبقا بالفعل", "error");
+                btn.disabled = false;
+                return;
+            }
+        } catch (e) {
+            console.error("Duplicate check error:", e);
+        }
+    }
 
     // Mandatory Password for new students
     if (!id && !data.password) {
@@ -7327,7 +7397,7 @@ async function generatePDFReport() {
             <div id="pdf-report-content" style="width: 1040px; padding: 30px; background: white; color: #1f2937; font-family: sans-serif; direction: rtl; text-align: right;">
                 
                 <div style="text-align: center; margin-bottom: 30px; border-bottom: 2px solid #064e3b; padding-bottom: 20px;">
-                    <h1 style="font-size: 26px; color: #064e3b; margin: 0; font-weight: bold;">برنامج المتابعة - النسخة التجريبية</h1>
+                    <h1 style="font-size: 26px; color: #064e3b; margin: 0; font-weight: bold;">برنامج المتابعة</h1>
                     <h2 style="font-size: 20px; color: #374151; margin: 10px 0 5px 0;">تقرير المجموعات التفصيلي</h2>
                     <p style="font-size: 14px; color: #6b7280; margin: 0;">هذا التقرير الشامل يوضح درجات الطلاب في "${compName}" والمشاركات والغيابات مع حساب صافي النقاط للمجموعات بناءاً على إحصائيات هذه الفترة.</p>
                     <p style="font-size: 14px; color: #6b7280; margin: 5px 0 0 0;">الفترة المشمولة: من ${startDate} إلى ${endDate}</p>
@@ -7478,7 +7548,7 @@ async function exportStudentsPDF() {
         container.innerHTML = `
             <div id="pdf-students-content" style="width: 1040px; padding: 30px; background: white; color: #1f2937; font-family: sans-serif; direction: rtl; text-align: right;">
                 <div style="text-align: center; margin-bottom: 30px; border-bottom: 2px solid #064e3b; padding-bottom: 20px;">
-                    <h1 style="font-size: 26px; color: #064e3b; margin: 0; font-weight: bold;">برنامج المتابعة - النسخة التجريبية</h1>
+                    <h1 style="font-size: 26px; color: #064e3b; margin: 0; font-weight: bold;">برنامج المتابعة</h1>
                     <h2 style="font-size: 20px; color: #374151; margin: 10px 0 5px 0;">سجل بيانات الطلاب الشامل</h2>
                     <p style="font-size: 14px; color: #6b7280; margin: 0;">المستوى: ${levelName} | إجمالي الطلاب: ${students.length}</p>
                 </div>
@@ -7660,7 +7730,7 @@ async function exportScoresPDF() {
         container.innerHTML = `
             <div id="pdf-scores-content" style="width: 1040px; padding: 30px; background: white; color: #1f2937; font-family: sans-serif; direction: rtl; text-align: right;">
                 <div style="text-align: center; margin-bottom: 30px; border-bottom: 2px solid #064e3b; padding-bottom: 20px;">
-                    <h1 style="font-size: 26px; color: #064e3b; margin: 0; font-weight: bold;">برنامج المتابعة - النسخة التجريبية</h1>
+                    <h1 style="font-size: 26px; color: #064e3b; margin: 0; font-weight: bold;">برنامج المتابعة</h1>
                     <h2 style="font-size: 20px; color: #374151; margin: 10px 0 5px 0;">السجل التفصيلي للدرجات والمشاركات</h2>
                     <p style="font-size: 14px; color: #6b7280; margin: 0;">المستوى: ${levelName} | الفترة: ${startDate} إلى ${endDate} | عدد الحركات: ${logs.length}</p>
                 </div>
