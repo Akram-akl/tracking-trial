@@ -2061,14 +2061,6 @@ function getStudentModalHTML() {
              </form>
         </div>
     </div>
-    
-    <div id="emoji-picker-modal" style="z-index: 99999;" class="fixed inset-0 bg-black/50 hidden flex items-center justify-center p-4 backdrop-blur-sm">
-        <div class="bg-white dark:bg-gray-800 rounded-2xl w-full max-w-xs p-4 shadow-2xl">
-            <h3 class="font-bold text-center mb-4">اختر إيموجي</h3>
-            <div id="emoji-grid" class="grid grid-cols-5 gap-2 max-h-60 overflow-y-auto"></div>
-            <button onclick="closeModal('emoji-picker-modal')" class="w-full mt-4 py-2 rounded-xl bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 font-medium">إغلاق</button>
-        </div>
-    </div>
     `;
 }
 
@@ -2079,16 +2071,30 @@ function openImagePicker() {
 
 // فتح اختيار الإيموجي
 function openEmojiPicker() {
-    const emojis = ["👤", "🎓", "🏆", "🌟", "📚", "🕌", "⚽", "🧠", "⚔️", "🛡️", "🎒", "🧸", "👦", "👧", "👨‍🎓", "👩‍🎓", "🦁", "🐯", "🦅", "🐎", "🌙", "☀️", "⭐", "🚀", "💪", "🎯", "📖", "✏️", "🎨", "🧑​"];
+    const emojis = ["👤", "🎓", "🏆", "🌟", "📚", "🕌", "⚽", "🧠", "⚔️", "🛡️", "🎒", "🧸", "👦", "👧", "👨‍🎓", "👩‍🎓", "🦁", "🐯", "🦅", "🐎", "🌙", "☀️", "⭐", "🚀", "💪", "🎯", "📖", "✏️", "🎨", "🧑"];
 
-    const grid = document.getElementById('emoji-grid');
-    grid.innerHTML = emojis.map(e => `
-                        <button type="button" onclick="selectEmoji('${e}')" class="w-12 h-12 text-2xl hover:bg-gray-100 dark:hover:bg-gray-700 rounded-xl transition flex items-center justify-center">
-                            ${e}
-                        </button>
-                        `).join('');
+    const existingModal = document.getElementById('dynamic-emoji-modal');
+    if (existingModal) existingModal.remove();
 
-    toggleModal('emoji-picker-modal', true);
+    const gridHtml = emojis.map(e => `
+        <button type="button" onclick="selectEmoji('${e}')" class="w-12 h-12 text-2xl hover:bg-gray-100 dark:hover:bg-gray-700 rounded-xl transition flex items-center justify-center">
+            ${e}
+        </button>
+    `).join('');
+
+    const modalHtml = `
+    <div id="dynamic-emoji-modal" style="z-index: 999999;" class="fixed inset-0 bg-black/50 flex items-center justify-center p-4 backdrop-blur-sm animate-fade-in">
+        <div class="bg-white dark:bg-gray-800 rounded-2xl w-full max-w-xs p-4 shadow-2xl">
+            <h3 class="font-bold text-center mb-4">اختر إيموجي</h3>
+            <div class="grid grid-cols-5 gap-2 max-h-60 overflow-y-auto custom-scrollbar">
+                ${gridHtml}
+            </div>
+            <button type="button" onclick="document.getElementById('dynamic-emoji-modal').remove()" class="w-full mt-4 py-2 rounded-xl bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 font-medium transition">إغلاق</button>
+        </div>
+    </div>
+    `;
+
+    document.body.insertAdjacentHTML('beforeend', modalHtml);
 }
 
 // اختيار إيموجي
@@ -2096,21 +2102,36 @@ function selectEmoji(emoji) {
     document.getElementById('student-emoji').value = emoji;
     document.getElementById('student-emoji-preview').innerHTML = emoji;
     document.getElementById('student-image-upload').value = '';
-    closeModal('emoji-picker-modal');
+    const modal = document.getElementById('dynamic-emoji-modal');
+    if (modal) modal.remove();
 }
 
 // فتح اختيار الإيموجي للتسجيل الذاتي
 function openIconPickerForRegistration() {
     const emojis = ["👤", "🎓", "🏆", "🌟", "📚", "🕌", "⚽", "🧠", "⚔️", "🛡️", "🎒", "🧸", "👦", "👧", "👨‍🎓", "👩‍🎓", "🦁", "🐯", "🦅", "🐎", "🌙", "☀️", "⭐", "🚀", "💪", "🎯", "📖", "✏️", "🎨", "🧑"];
 
-    const grid = document.getElementById('emoji-grid');
-    grid.innerHTML = emojis.map(e => `
+    const existingModal = document.getElementById('dynamic-emoji-modal');
+    if (existingModal) existingModal.remove();
+
+    const gridHtml = emojis.map(e => `
         <button type="button" onclick="selectEmojiForRegistration('${e}')" class="w-12 h-12 text-2xl hover:bg-gray-100 dark:hover:bg-gray-700 rounded-xl transition flex items-center justify-center">
             ${e}
         </button>
     `).join('');
 
-    toggleModal('emoji-picker-modal', true);
+    const modalHtml = `
+    <div id="dynamic-emoji-modal" style="z-index: 999999;" class="fixed inset-0 bg-black/50 flex items-center justify-center p-4 backdrop-blur-sm animate-fade-in">
+        <div class="bg-white dark:bg-gray-800 rounded-2xl w-full max-w-xs p-4 shadow-2xl">
+            <h3 class="font-bold text-center mb-4">اختر إيموجي</h3>
+            <div class="grid grid-cols-5 gap-2 max-h-60 overflow-y-auto custom-scrollbar">
+                ${gridHtml}
+            </div>
+            <button type="button" onclick="document.getElementById('dynamic-emoji-modal').remove()" class="w-full mt-4 py-2 rounded-xl bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 font-medium transition">إغلاق</button>
+        </div>
+    </div>
+    `;
+
+    document.body.insertAdjacentHTML('beforeend', modalHtml);
 }
 
 function selectEmojiForRegistration(emoji) {
@@ -2122,7 +2143,8 @@ function selectEmojiForRegistration(emoji) {
             <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-white"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
         </div>`;
     }
-    closeModal('emoji-picker-modal');
+    const modal = document.getElementById('dynamic-emoji-modal');
+    if (modal) modal.remove();
 }
 
 
