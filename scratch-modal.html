@@ -1,0 +1,165 @@
+    <div id="student-modal" class="fixed inset-0 bg-black/50 z-[100] hidden flex items-center justify-center p-0 sm:p-4 backdrop-blur-sm">
+        <div class="bg-white dark:bg-gray-800 rounded-t-3xl sm:rounded-2xl w-full max-w-md p-6 shadow-2xl h-[90vh] sm:h-auto overflow-y-auto">
+             <h3 id="student-modal-title" class="text-lg font-bold mb-6">${getLabel('add_student')}</h3>
+
+             <form id="student-form" onsubmit="handleSaveStudent(event)">
+                 <input type="hidden" id="student-id">
+                 
+                 <div class="mb-4 flex flex-col items-center gap-3">
+                        <div id="student-emoji-preview" class="w-24 h-24 bg-gray-100 dark:bg-gray-700 rounded-full flex items-center justify-center text-4xl shadow-inner border-2 border-dashed border-gray-300 dark:border-gray-600 overflow-hidden">
+                            👤
+                        </div>
+                        <div class="flex gap-2">
+                             <button type="button" onclick="openImagePicker()" class="flex items-center gap-2 px-4 py-2 bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 rounded-xl text-sm font-medium hover:bg-emerald-100 transition">
+                                 <i data-lucide="image" class="w-4 h-4"></i>
+                                 رفع صورة
+                             </button>
+                             <button type="button" onclick="openEmojiPicker()" class="flex items-center gap-2 px-4 py-2 bg-amber-50 dark:bg-amber-900/30 text-amber-600 rounded-xl text-sm font-medium hover:bg-amber-100 transition">
+                                 <i data-lucide="smile" class="w-4 h-4"></i>
+                                 إيموجي
+                             </button>
+                        </div>
+                        <input type="file" id="student-image-upload" accept="image/*" class="hidden" onchange="previewStudentImage(this)">
+                        <input type="hidden" id="student-emoji" value="👤">
+                 </div>
+
+                 <div class="space-y-3">
+                     <div>
+                         <label class="block text-sm font-bold mb-1">اسم ${getLabel('student')}</label>
+                         <input type="text" id="student-name" required class="w-full bg-gray-50 dark:bg-gray-700 border border-gray-200 rounded-xl px-4 py-3">
+                     </div>
+
+                     <div>
+                         <label class="block text-sm font-bold mb-1">${getLabel('parent_phone')} (واتساب)</label>
+                         <input type="tel" id="student-number" class="w-full bg-gray-50 dark:bg-gray-700 border border-gray-200 rounded-xl px-4 py-3" placeholder="مثال: 966500000000">
+                         <p class="text-xs text-gray-400 mt-1">${state.currentLevel === 'ijazat' ? 'يستخدم للتواصل والمتابعة عبر واتساب' : 'يستخدم للتواصل عبر واتساب عند الغياب'}</p>
+                     </div>
+                     
+                     <div class="grid grid-cols-2 gap-3 mt-1">
+                         <div>
+                             <label class="block text-sm font-bold mb-1 text-gray-600 dark:text-gray-300">رقم الهوية</label>
+                             <input type="text" id="student-national-id" class="w-full bg-gray-50 dark:bg-gray-700 border border-gray-200 rounded-xl px-4 py-3 text-sm">
+                         </div>
+                             <div>
+                                 <label class="block text-sm font-bold mb-1 text-gray-600 dark:text-gray-300">آخر اختبار جمعية</label>
+                                 <select id="student-last-exam" class="w-full bg-gray-50 dark:bg-gray-700 border border-gray-200 rounded-xl px-4 py-3 text-sm">
+                                     <option value="لم يختبر">لم يختبر</option>
+                                     <option value="1">1</option>
+                                     <option value="2">2</option>
+                                     <option value="3">3</option>
+                                     <option value="5">5</option>
+                                     <option value="8">8</option>
+                                     <option value="10">10</option>
+                                     <option value="13">13</option>
+                                     <option value="15">15</option>
+                                     <option value="20">20</option>
+                                     <option value="25">25</option>
+                                     <option value="30">30 (خاتم)</option>
+                                 </select>
+                             </div>
+                     </div>
+                     
+                     <input type="hidden" id="student-memorization">
+                     <input type="hidden" id="student-review">
+
+
+                     
+                     <div class="mb-2">
+                         <label class="block text-sm font-bold mb-1">كلمة المرور</label>
+                         <input type="text" id="student-password-edit" class="w-full bg-gray-50 dark:bg-gray-700 border border-gray-200 rounded-xl px-4 py-3" placeholder="كلمة المرور (إلزامي لل${getLabel('students')} الجدد)">
+                         <p id="password-error" class="hidden text-red-500 text-xs mt-1 font-bold">⚠️ كلمة المرور مطلوبة لل${getLabel('student')} الجديد</p>
+                     </div>
+                     
+                     <div class="flex gap-3 mt-6">
+                         <button type="button" onclick="closeModal('student-modal')" class="flex-1 py-3 rounded-xl text-gray-600 hover:bg-gray-100 font-bold transition">إلغاء</button>
+                         <button type="submit" id="save-student-btn" class="flex-1 py-3 bg-emerald-700 text-white rounded-xl font-bold hover:bg-emerald-800 transition"><span id="save-student-text">حفظ</span></button>
+                     </div>
+                     
+                     <div id="transfer-student-section" class="hidden mt-4 pt-4 border-t border-gray-100 dark:border-gray-700">
+                         <button type="button" onclick="openTransferModal()" class="w-full py-3 bg-blue-50 text-blue-700 hover:bg-blue-100 dark:bg-blue-900/30 dark:text-blue-400 rounded-xl font-bold transition flex items-center justify-center gap-2">
+                             <i data-lucide="arrow-right-left" class="w-4 h-4"></i>
+                             طلب نقل ${getLabel('student')} لحلقة أخرى
+                         </button>
+                     </div>
+                 </div>
+             </form>
+        </div>
+    </div>
+    
+    <div id="emoji-picker-modal" class="fixed inset-0 bg-black/50 z-[999] hidden flex items-center justify-center p-4 backdrop-blur-sm">
+        <div class="bg-white dark:bg-gray-800 rounded-2xl w-full max-w-xs p-4 shadow-2xl">
+            <h3 class="font-bold text-center mb-4">اختر إيموجي</h3>
+            <div id="emoji-grid" class="grid grid-cols-5 gap-2 max-h-60 overflow-y-auto"></div>
+            <button onclick="closeModal('emoji-picker-modal')" class="w-full mt-4 py-2 rounded-xl bg-gray-100 hover:bg-gray-200 dark:bg-gray-700 dark:hover:bg-gray-600 font-medium">إغلاق</button>
+        </div>
+    </div>
+    `;
+}
+
+// فتح اختيار الصورة من المعرض
+function openImagePicker() {
+    document.getElementById('student-image-upload').click();
+}
+
+// فتح اختيار الإيموجي
+function openEmojiPicker() {
+    const emojis = ["👤", "🎓", "🏆", "🌟", "📚", "🕌", "⚽", "🧠", "⚔️", "🛡️", "🎒", "🧸", "👦", "👧", "👨‍🎓", "👩‍🎓", "🦁", "🐯", "🦅", "🐎", "🌙", "☀️", "⭐", "🚀", "💪", "🎯", "📖", "✏️", "🎨", "🧑​"];
+
+    const grid = document.getElementById('emoji-grid');
+    grid.innerHTML = emojis.map(e => `
+                        <button type="button" onclick="selectEmoji('${e}')" class="w-12 h-12 text-2xl hover:bg-gray-100 dark:hover:bg-gray-700 rounded-xl transition flex items-center justify-center">
+                            ${e}
+                        </button>
+                        `).join('');
+
+    toggleModal('emoji-picker-modal', true);
+}
+
+// اختيار إيموجي
+function selectEmoji(emoji) {
+    document.getElementById('student-emoji').value = emoji;
+    document.getElementById('student-emoji-preview').innerHTML = emoji;
+    document.getElementById('student-image-upload').value = '';
+    closeModal('emoji-picker-modal');
+}
+
+// فتح اختيار الإيموجي للتسجيل الذاتي
+function openIconPickerForRegistration() {
+    const emojis = ["👤", "🎓", "🏆", "🌟", "📚", "🕌", "⚽", "🧠", "⚔️", "🛡️", "🎒", "🧸", "👦", "👧", "👨‍🎓", "👩‍🎓", "🦁", "🐯", "🦅", "🐎", "🌙", "☀️", "⭐", "🚀", "💪", "🎯", "📖", "✏️", "🎨", "🧑"];
+
+    const grid = document.getElementById('emoji-grid');
+    grid.innerHTML = emojis.map(e => `
+        <button type="button" onclick="selectEmojiForRegistration('${e}')" class="w-12 h-12 text-2xl hover:bg-gray-100 dark:hover:bg-gray-700 rounded-xl transition flex items-center justify-center">
+            ${e}
+        </button>
+    `).join('');
+
+    toggleModal('emoji-picker-modal', true);
+}
+
+function selectEmojiForRegistration(emoji) {
+    window._selectedAddStudentIcon = emoji;
+    const iconContainer = document.getElementById('self-reg-selected-icon');
+    if (iconContainer) {
+        iconContainer.innerHTML = emoji + `
+        <div class="absolute inset-0 bg-black/20 flex items-center justify-center opacity-0 hover:opacity-100 transition-opacity">
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-white"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+        </div>`;
+    }
+    closeModal('emoji-picker-modal');
+}
+
+
+async function previewStudentImage(input) {
+    if (input.files && input.files[0]) {
+        const compressed = await compressImage(input.files[0]);
+        const preview = document.getElementById('student-emoji-preview');
+        preview.innerHTML = `<img src="${compressed}" class="w-full h-full object-cover">`;
+        // مسح قيمة الإيموجي لأن الصورة أولوية
+        document.getElementById('student-emoji').value = '';
+    }
+}
+
+function getCompetitionModalsHTML() {
+    // Similar to student modal but for competitions + groups
+    return `
