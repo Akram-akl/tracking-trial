@@ -2062,7 +2062,7 @@ function getStudentModalHTML() {
         </div>
     </div>
     
-    <div id="emoji-picker-modal" class="fixed inset-0 bg-black/50 z-[150] hidden flex items-center justify-center p-4 backdrop-blur-sm">
+    <div id="emoji-picker-modal" class="fixed inset-0 bg-black/50 z-[999] hidden flex items-center justify-center p-4 backdrop-blur-sm">
         <div class="bg-white dark:bg-gray-800 rounded-2xl w-full max-w-xs p-4 shadow-2xl">
             <h3 class="font-bold text-center mb-4">اختر إيموجي</h3>
             <div id="emoji-grid" class="grid grid-cols-5 gap-2 max-h-60 overflow-y-auto"></div>
