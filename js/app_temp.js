@@ -5154,7 +5154,7 @@ async function openStudentReport(studentId) {
             const prSnap = await window.firebaseOps.getDocs(prQ);
             prSnap.forEach(doc => {
                 const d = doc.data(); d.id = doc.id;
-                d.planType = activePlanMap2[pid]?.plan_type || 'memorization';
+                d.planType = activePlanMap2[pid]?.planType || 'memorization';
                 window._currentStudentPlanRecords.push(d);
                 window._currentStudentPlannedDays.push({ date: d.date, planType: d.planType, record: d, status: d.status || 'pending' });
             });
@@ -8212,6 +8212,14 @@ function renderDirectGrading() {
                 <input type="text" id="direct-student-search" placeholder="ابحث عن ${getLabel('student')}..." class="w-full bg-white dark:bg-gray-800 border-2 border-gray-100 dark:border-gray-700 rounded-xl py-3 pr-10 pl-4 focus:outline-none focus:border-emerald-500 transition" onkeyup="filterDirectStudents()">
             </div>
 
+            <!-- Hifz Box -->
+            <div id="rate-quran-hifz-box" class="bg-emerald-50 dark:bg-emerald-900/10 p-4 rounded-xl border border-emerald-100 dark:border-emerald-800 text-right space-y-3 shadow-sm">
+            </div>
+
+            <!-- Review Box -->
+            <div id="rate-quran-review-box" class="bg-emerald-50 dark:bg-emerald-900/10 p-4 rounded-xl border border-emerald-100 dark:border-emerald-800 text-right space-y-3 shadow-sm">
+            </div>
+
             <div id="direct-students-list" class="space-y-2 pb-24">
                 <!-- Students injected here -->
             </div>
@@ -8489,7 +8497,7 @@ function ensureRateStudentModal() {
                 
                 <div id="rate-quran-section" class="hidden mb-4 space-y-4">
                     <!-- Hifz Box -->
-                    <div id="rate-quran-hifz-box" class="bg-emerald-50 dark:bg-emerald-900/10 p-4 rounded-xl border border-emerald-100 dark:border-emerald-800 text-right space-y-3 shadow-sm">
+                    <div class="bg-emerald-50 dark:bg-emerald-900/10 p-4 rounded-xl border border-emerald-100 dark:border-emerald-800 text-right space-y-3 shadow-sm">
                         <h4 class="font-bold text-xs text-emerald-700 dark:text-emerald-400 flex items-center gap-1">📝 تسجيل حفظ أو مراجعة صغرى</h4>
                         <div class="grid grid-cols-2 gap-2">
                             <div>
@@ -8534,7 +8542,7 @@ function ensureRateStudentModal() {
                     </div>
 
                     <!-- Murajaa Box -->
-                    <div id="rate-quran-review-box" class="bg-emerald-50 dark:bg-emerald-900/10 p-4 rounded-xl border border-emerald-100 dark:border-emerald-800 text-right space-y-3 shadow-sm">
+                    <div class="bg-emerald-50 dark:bg-emerald-900/10 p-4 rounded-xl border border-emerald-100 dark:border-emerald-800 text-right space-y-3 shadow-sm">
                         <h4 class="font-bold text-xs text-emerald-700 dark:text-emerald-400 flex items-center gap-1">🔄 تسجيل مراجعة أو مراجعة كبرى</h4>
                         <div class="grid grid-cols-2 gap-2">
                             <div>
@@ -9167,7 +9175,6 @@ window.getLocalYYYYMMDD = function(d) {
 };
 function generateFlexiblePlan({ startSura, startAyah, endSura, endAyah, pagesPerDay, targetDays, studyDates, startDate, generateMode }) {
     const isDaysPages = generateMode === 'days_pages';
-    // For days_pages: end is open (determined by pages×days), so use full Quran as source
     const allAyahs = getPlanAyahRange(startSura, startAyah, isDaysPages ? 114 : (endSura || 114), isDaysPages ? 9999 : (endAyah || 9999));
     if (allAyahs.length === 0) return [];
 
@@ -9243,16 +9250,12 @@ function generateFlexiblePlan({ startSura, startAyah, endSura, endAyah, pagesPer
             const a = allAyahs[tempIdx];
             
             if ((generateMode === 'pages' || generateMode === 'days') && i === studyDates.length - 1) {
-                // last day in pages/days mode consumes everything left up to the defined end
+                // last day in pages mode consumes everything left
                 dayEnd = a;
                 tempIdx++;
             } else {
-                const remainingDays = studyDates.length - i;
-                const dynamicTarget = (generateMode === 'days') && remainingDays > 0 
-                    ? getVolume(dayStart, allAyahs[allAyahs.length - 1]) / remainingDays 
-                    : targetPagesPerDay;
                 const curVol = getVolume(dayStart, a);
-                if (curVol > dynamicTarget && tempIdx > idx) {
+                if (curVol > targetPagesPerDay && tempIdx > idx) {
                     break;
                 }
                 dayEnd = a;
@@ -9349,21 +9352,6 @@ async function saveStudentPlanToDB(planData, dailyRecords) {
             }
         );
     }
-    // Save a full snapshot of original plan records into student_plans for undo support
-    const originalSnapshot = dailyRecords.map(d => ({
-        date: d.date,
-        planned_start_sura: d.startSura,
-        planned_start_ayah: d.startAyah,
-        planned_end_sura: d.endSura,
-        planned_end_ayah: d.endAyah,
-        planned_start_page: d.startPage,
-        planned_end_page: d.endPage,
-        planned_sections: d.plannedSections || []
-    }));
-    await window.firebaseOps.updateDoc(
-        window.firebaseOps.doc(window.db, 'student_plans', planRef.id),
-        { original_snapshot: originalSnapshot, updatedAt: new Date().toISOString() }
-    );
     return planRef.id;
 }
 
@@ -9432,60 +9420,6 @@ async function redistributeStudentPlan(planId, fromDate, actualEndSura, actualEn
             }
             newStartSura = next.sura_no;
             newStartAyah = next.aya_no;
-        }
-
-        if (mode === 'rollover' && futureRecords.length > 0) {
-            const nextDay = futureRecords[0];
-            // Save a compact snapshot of ALL future records before modifying the first one
-            const snapshot = futureRecords.map(r => ({
-                id: r.id,
-                date: r.date,
-                planned_start_sura: r.planned_start_sura || r.plannedStartSura,
-                planned_start_ayah: r.planned_start_ayah || r.plannedStartAyah,
-                planned_end_sura: r.planned_end_sura || r.plannedEndSura,
-                planned_end_ayah: r.planned_end_ayah || r.plannedEndAyah,
-                planned_start_page: r.planned_start_page || r.plannedStartPage || 1,
-                planned_end_page: r.planned_end_page || r.plannedEndPage || 1,
-                planned_sections: r.planned_sections || r.plannedSections || []
-            }));
-            const allAyahs = getPlanAyahRange(newStartSura, newStartAyah, nextDay.plannedEndSura || nextDay.planned_end_sura, nextDay.plannedEndAyah || nextDay.planned_end_ayah);
-            const newSections = buildSectionsFromAyahs(allAyahs);
-            // Save snapshot into current day record, then update next day
-            if (currentRecord) {
-                await window.firebaseOps.updateDoc(
-                    window.firebaseOps.doc(window.db, 'plan_daily_records', currentRecord.id),
-                    { undo_snapshot: snapshot, updatedAt: new Date().toISOString() }
-                );
-            }
-            await window.firebaseOps.updateDoc(
-                window.firebaseOps.doc(window.db, 'plan_daily_records', nextDay.id), {
-                    planned_start_sura: newStartSura,
-                    planned_start_ayah: newStartAyah,
-                    planned_sections: newSections,
-                    planned_start_page: allAyahs[0]?.page || 1,
-                    updatedAt: new Date().toISOString()
-                }
-            );
-            return;
-        }
-
-        // --- Save compact snapshot of future records before any changes ---
-        const snapshot = futureRecords.map(r => ({
-            id: r.id,
-            date: r.date,
-            planned_start_sura: r.planned_start_sura || r.plannedStartSura,
-            planned_start_ayah: r.planned_start_ayah || r.plannedStartAyah,
-            planned_end_sura: r.planned_end_sura || r.plannedEndSura,
-            planned_end_ayah: r.planned_end_ayah || r.plannedEndAyah,
-            planned_start_page: r.planned_start_page || r.plannedStartPage || 1,
-            planned_end_page: r.planned_end_page || r.plannedEndPage || 1,
-            planned_sections: r.planned_sections || r.plannedSections || []
-        }));
-        if (currentRecord) {
-            await window.firebaseOps.updateDoc(
-                window.firebaseOps.doc(window.db, 'plan_daily_records', currentRecord.id),
-                { undo_snapshot: snapshot, updatedAt: new Date().toISOString() }
-            );
         }
 
         const futureDates = futureRecords.map(r => r.date);
@@ -10040,19 +9974,16 @@ async function loadPlanTrackingForStudent(studentId, dateStr) {
 
     try {
         const entries = await getStudentPlanEntriesForDate(studentId, dateStr);
-        
-        // Hide manual boxes if student has active plans, regardless of today's entries
-        const qPlans = window.firebaseOps.query(
-            window.firebaseOps.collection(window.db, 'student_plans'),
-            window.firebaseOps.where('student_id', '==', studentId),
-            window.firebaseOps.where('status', '==', 'active')
-        );
-        const plansSnap = await window.firebaseOps.getDocs(qPlans);
-        const activePlans = plansSnap.docs.map(d => d.data());
+        if (entries.length === 0) {
+            planBlock.classList.add('hidden');
+            planBlock.innerHTML = '';
+            if (quranSec) quranSec.classList.remove('hidden');
+            return;
+        }
 
-        const hasHifzPlan = activePlans.some(p => p.planType === 'memorization' || p.plan_type === 'memorization');
-        const hasReviewPlan = activePlans.some(p => p.planType === 'review' || p.plan_type === 'review');
-
+        // Selectively hide manual quran section parts
+        const hasHifzPlan = entries.some(e => e.plan.planType === 'memorization');
+        const hasReviewPlan = entries.some(e => e.plan.planType === 'review');
         const hBox = document.getElementById('rate-quran-hifz-box');
         const rBox = document.getElementById('rate-quran-review-box');
         if (quranSec) {
@@ -10061,13 +9992,6 @@ async function loadPlanTrackingForStudent(studentId, dateStr) {
             if (hasReviewPlan && rBox) rBox.classList.add('hidden'); else if (rBox) rBox.classList.remove('hidden');
             if (hasHifzPlan && hasReviewPlan) quranSec.classList.add('hidden');
         }
-
-        if (entries.length === 0) {
-            planBlock.classList.add('hidden');
-            planBlock.innerHTML = '';
-            return;
-        }
-
         window._currentPlanEntries = entries;
 
         let html = '<div class="space-y-3">';
@@ -10142,96 +10066,12 @@ window._planMarkDone = async function(recordId, planId, studentId, date) {
 
 window._planUndoDone = async function(recordId, studentId, date) {
     try {
-        // Fetch the current day's record
-        const recDoc = await window.firebaseOps.getDoc(
-            window.firebaseOps.doc(window.db, 'plan_daily_records', recordId));
-        if (!recDoc.exists()) return;
-        const recData = recDoc.data();
-        const planId = recData.plan_id || recData.planId;
-        if (!planId) { showToast('تعذر إيجاد الخطة', 'error'); return; }
-
-        // Strategy 1: Per-modification snapshot (saved in undo_snapshot on the record itself)
-        let snapshot = recData.undo_snapshot || recData.undoSnapshot || null;
-
-        // Strategy 2: Fall back to original_snapshot from student_plans
-        if (!snapshot || snapshot.length === 0) {
-            const planDoc = await window.firebaseOps.getDoc(
-                window.firebaseOps.doc(window.db, 'student_plans', planId));
-            if (planDoc.exists()) {
-                const planData = planDoc.data();
-                snapshot = planData.original_snapshot || planData.originalSnapshot || null;
-            }
-        }
-
-        if (!snapshot || snapshot.length === 0) {
-            showToast('لا توجد نسخة احتياطية للتراجع', 'error');
-            return;
-        }
-
-        showToast('جاري استعادة الخطة...', 'success');
-
-        // Delete ALL future pending records
-        const allRecords = await loadPlanDailyRecords(planId);
-        const toDelete = allRecords.filter(r => r.date > date && r.status === 'pending');
-        for (const r of toDelete) {
-            await window.firebaseOps.deleteDoc(
-                window.firebaseOps.doc(window.db, 'plan_daily_records', r.id));
-        }
-
-        // Re-insert snapshot records that are after today
-        const futureSS = snapshot.filter(s => {
-            const d = s.date || s.planned_date;
-            return d && d > date;
-        });
-        for (const s of futureSS) {
-            await window.firebaseOps.addDoc(
-                window.firebaseOps.collection(window.db, 'plan_daily_records'), {
-                    plan_id: planId,
-                    student_id: recData.student_id || recData.studentId,
-                    date: s.date,
-                    planned_start_sura: s.planned_start_sura || s.plannedStartSura,
-                    planned_start_ayah: s.planned_start_ayah || s.plannedStartAyah,
-                    planned_end_sura: s.planned_end_sura || s.plannedEndSura,
-                    planned_end_ayah: s.planned_end_ayah || s.plannedEndAyah,
-                    planned_start_page: s.planned_start_page || s.plannedStartPage,
-                    planned_end_page: s.planned_end_page || s.plannedEndPage,
-                    planned_sections: s.planned_sections || s.plannedSections || [],
-                    status: 'pending',
-                    createdAt: new Date().toISOString(),
-                    updatedAt: new Date().toISOString()
-                }
-            );
-        }
-
-        // Also restore today's own planned data from snapshot if available
-        const todaySS = snapshot.find(s => s.date === date);
-
-        // Reset current day status
-        const resetData = {
-            status: 'pending',
-            actual_end_sura: null,
-            actual_end_ayah: null,
-            actual_start_sura: null,
-            actual_start_ayah: null,
-            undo_snapshot: null,
-            updatedAt: new Date().toISOString()
-        };
-        // If we have today's original planned data, restore it too
-        if (todaySS) {
-            resetData.planned_start_sura = todaySS.planned_start_sura || todaySS.plannedStartSura;
-            resetData.planned_start_ayah = todaySS.planned_start_ayah || todaySS.plannedStartAyah;
-            resetData.planned_end_sura = todaySS.planned_end_sura || todaySS.plannedEndSura;
-            resetData.planned_end_ayah = todaySS.planned_end_ayah || todaySS.plannedEndAyah;
-            resetData.planned_start_page = todaySS.planned_start_page || todaySS.plannedStartPage;
-            resetData.planned_end_page = todaySS.planned_end_page || todaySS.plannedEndPage;
-            resetData.planned_sections = todaySS.planned_sections || todaySS.plannedSections || [];
-        }
         await window.firebaseOps.updateDoc(
-            window.firebaseOps.doc(window.db, 'plan_daily_records', recordId), resetData);
-
-        showToast('تم التراجع واستعادة الخطة ✓', 'success');
+            window.firebaseOps.doc(window.db, 'plan_daily_records', recordId),
+            { status: 'pending', updatedAt: new Date().toISOString() });
+        showToast('تم التراجع', 'success');
         await loadPlanTrackingForStudent(studentId, date);
-    } catch(e) { console.error('undo:', e); showToast('حدث خطأ أثناء التراجع', 'error'); }
+    } catch(e) { showToast('حدث خطأ', 'error'); }
 };
 
 window._planShowIncomplete = function(recordId, planId, studentId, date) {
@@ -10240,8 +10080,7 @@ window._planShowIncomplete = function(recordId, planId, studentId, date) {
     const rec = entry.record;
     window._piCurrentRec = rec;
     const suras = window.QuranService ? window.QuranService.getSuras() : [];
-    const startS = rec.planned_start_sura || rec.plannedStartSura || 1;
-    const allowedSuras = suras.filter(s => s.number >= startS && s.number <= (entry.plan.endSura || 114));
+    const allowedSuras = suras.filter(s => s.number >= (rec.plannedStartSura || 1) && s.number <= (entry.plan.endSura || 114));
     const suraOpts = allowedSuras.map(s => `<option value="${s.number}">${s.name}</option>`).join('');
 
     let modal = document.getElementById('plan-incomplete-modal');
@@ -10276,11 +10115,10 @@ window._planShowIncomplete = function(recordId, planId, studentId, date) {
             </div>
         </div>`;
     const piSura = document.getElementById('pi-end-sura');
-    const startA = rec.planned_start_ayah || rec.plannedStartAyah || 1;
-    if (piSura) {
-        piSura.value = startS;
+    if (piSura && rec.planned_start_sura) {
+        piSura.value = rec.planned_start_sura;
         _piUpdateAyahs();
-        document.getElementById('pi-end-ayah').value = startA;
+        document.getElementById('pi-end-ayah').value = rec.planned_start_ayah || 1;
     }
     lucide.createIcons();
 };
@@ -10289,12 +10127,8 @@ window._piUpdateAyahs = function() {
     const sno = parseInt(document.getElementById('pi-end-sura')?.value || 1);
     const sel = document.getElementById('pi-end-ayah');
     if (!sel || !window.QuranService) return;
-    let ayahs = window.QuranService.getAyahs(sno).filter(a => a.aya_no > 0).sort((a, b) => a.aya_no - b.aya_no);
-    const entry = (window._currentPlanEntries || []).find(e => e.record.id === window._piCurrentRec?.id);
-    if (entry && entry.plan && sno === entry.plan.endSura) {
-        const endAy = entry.plan.endAyah || 9999;
-        ayahs = ayahs.filter(a => a.aya_no <= endAy);
-    }
+    const ayahs = window.QuranService.getAyahs(sno)
+        .filter(a => a.aya_no > 0).sort((a, b) => a.aya_no - b.aya_no);
     sel.innerHTML = ayahs.map(a => `<option value="${a.aya_no}">${a.aya_no}</option>`).join('');
 };
 
@@ -10375,7 +10209,7 @@ async function checkPlanBeforeAbsence(studentId, date, onContinue) {
 
         let modal = document.getElementById('absence-plan-modal');
         if (!modal) { modal = document.createElement('div'); modal.id = 'absence-plan-modal'; document.body.appendChild(modal); }
-        modal.className = 'fixed inset-0 bg-black/70 z-[500] flex items-center justify-center p-4 backdrop-blur-sm animate-fade-in';
+        modal.className = 'fixed inset-0 bg-black/70 z-[250] flex items-center justify-center p-4 backdrop-blur-sm animate-fade-in';
         modal.innerHTML = `
             <div class="bg-white dark:bg-gray-800 rounded-3xl w-full max-w-sm shadow-2xl text-center p-6">
                 <div class="bg-orange-100 dark:bg-orange-900/30 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4 text-orange-600 dark:text-orange-400">
