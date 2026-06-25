@@ -5499,6 +5499,7 @@ window.renderStudentCalendar = (year, month) => {
                     let qIcons = '';
                     if (dayData.quranTypes.includes('memorization')) qIcons += '📝';
                     if (dayData.quranTypes.includes('review')) qIcons += '🔄';
+                    if (dayData.quranTypes.includes('minor_review')) qIcons += '📗';
                     dayContentTags.push(`<span class="text-[10px] mt-0.5" title="سجل قرآن">${qIcons}</span>`);
                 }
                 if (dayData.notes && dayData.notes.length > 0) {
@@ -5574,8 +5575,8 @@ window.showDayDetails = (dateStr) => {
     let planHtml = '';
     if (dayPlanItems.length > 0) {
         planHtml = dayPlanItems.map(p => {
-            const typeLabel = p.planType === 'memorization' ? '📝 خطة الحفظ' : '🔄 خطة المراجعة';
-            const typeColor = p.planType === 'memorization' ? 'emerald' : 'purple';
+            const typeLabel = p.planType === 'memorization' ? '📝 خطة الحفظ' : p.planType === 'minor_review' ? '📗 مراجعة صغرى' : '🔄 خطة المراجعة';
+            const typeColor = p.planType === 'memorization' ? 'emerald' : p.planType === 'minor_review' ? 'orange' : 'purple';
             const desc = typeof formatPlanDayDesc === 'function' ? formatPlanDayDesc(p.record?.plannedSections || []) : 'ورد اليوم';
             const statusMap = { pending: ['⏳ معلق','gray'], completed: ['✅ أنجز','green'], different: ['⚡ جزئي','amber'], absent: ['❌ غياب','red'] };
             const [statusLabel, sc] = statusMap[p.status] || ['⏳ معلق','gray'];
@@ -9644,8 +9645,8 @@ async function _loadAllPlans() {
                 </div>
                 ${sPlans.map(p => {
                     const startSuraName = suras.find(s => s.number === p.startSura)?.name || `سورة ${p.startSura}`;
-                    const typeLabel = p.planType === 'memorization' ? '📝 حفظ' : '🔄 مراجعة';
-                    const typeColor = p.planType === 'memorization' ? 'emerald' : 'purple';
+                    const typeLabel = p.planType === 'memorization' ? '📝 حفظ' : p.planType === 'minor_review' ? '📗 م.ص' : '🔄 مراجعة';
+                    const typeColor = p.planType === 'memorization' ? 'emerald' : p.planType === 'minor_review' ? 'orange' : 'purple';
                     const expired = p.endDate < today;
                     const daysLeft = Math.max(0, Math.ceil((new Date(p.endDate + 'T00:00:00') - new Date()) / 86400000));
                     return `
