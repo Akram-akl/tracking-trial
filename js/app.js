@@ -9726,6 +9726,7 @@ window.openCreatePlanModal = function(mode, preSelectedStudentId) {
                     <label class="block text-sm font-bold mb-2">نوع الخطة</label>
                     <div class="grid grid-cols-2 gap-3">
                         <button id="cp-btn-mem" onclick="_cpSelectType('memorization')" class="py-2 rounded-xl font-bold text-sm border-2 border-emerald-400 bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-400 transition">📝 حفظ</button>
+                        <button id="cp-btn-minor" onclick="_cpSelectType('minor_review')" class="py-2 rounded-xl font-bold text-sm border-2 border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-500 dark:text-gray-400 transition">📗 م.ص</button>
                         <button id="cp-btn-rev" onclick="_cpSelectType('review')" class="py-2 rounded-xl font-bold text-sm border-2 border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-500 dark:text-gray-400 transition">🔄 مراجعة</button>
                     </div>
                     <input type="hidden" id="cp-type" value="memorization">
@@ -9844,14 +9845,14 @@ window.openCreatePlanModal = function(mode, preSelectedStudentId) {
 window._cpSelectType = function(type) {
     document.getElementById('cp-type').value = type;
     const mem = document.getElementById('cp-btn-mem');
+    const minor = document.getElementById('cp-btn-minor');
     const rev = document.getElementById('cp-btn-rev');
-    if (type === 'memorization') {
-        mem.className = 'py-2 rounded-xl font-bold text-sm border-2 border-emerald-400 bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-400 transition';
-        rev.className = 'py-2 rounded-xl font-bold text-sm border-2 border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-500 dark:text-gray-400 transition';
-    } else {
-        rev.className = 'py-2 rounded-xl font-bold text-sm border-2 border-emerald-400 bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-400 transition';
-        mem.className = 'py-2 rounded-xl font-bold text-sm border-2 border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-500 dark:text-gray-400 transition';
-    }
+    const activeClass = (color) => `py-2 rounded-xl font-bold text-sm border-2 border-${color}-400 bg-${color}-50 dark:bg-${color}-900/20 text-${color}-700 dark:text-${color}-400 transition scale-[1.02] shadow-sm`;
+    const inactiveClass = 'py-2 rounded-xl font-bold text-sm border-2 border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-500 dark:text-gray-400 transition hover:bg-gray-50 dark:hover:bg-gray-600';
+
+    if (mem) mem.className = type === 'memorization' ? activeClass('emerald') : inactiveClass;
+    if (minor) minor.className = type === 'minor_review'  ? activeClass('orange')  : inactiveClass;
+    if (rev) rev.className = type === 'review'       ? activeClass('purple')  : inactiveClass;
 };
 
 window._cpSetMode = function(mode) {
