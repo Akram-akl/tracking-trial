@@ -2675,6 +2675,28 @@ async function performDeleteStudent() {
         // Get student name for audit log
         const student = state.students.find(s => s.id === studentToDeleteId);
         const studentName = student ? student.name : 'unknown';
+
+        // --- Cascade: delete student_plans + plan_daily_records ---
+        const plansQ = window.firebaseOps.query(
+            window.firebaseOps.collection(window.db, 'student_plans'),
+            window.firebaseOps.where('student_id', '==', studentToDeleteId)
+        );
+        const plansSnap = await window.firebaseOps.getDocs(plansQ);
+        for (const planDoc of plansSnap.docs) {
+            // Delete all daily records for this plan
+            const recQ = window.firebaseOps.query(
+                window.firebaseOps.collection(window.db, 'plan_daily_records'),
+                window.firebaseOps.where('plan_id', '==', planDoc.id)
+            );
+            const recSnap = await window.firebaseOps.getDocs(recQ);
+            for (const r of recSnap.docs) {
+                await window.firebaseOps.deleteDoc(
+                    window.firebaseOps.doc(window.db, 'plan_daily_records', r.id));
+            }
+            await window.firebaseOps.deleteDoc(
+                window.firebaseOps.doc(window.db, 'student_plans', planDoc.id));
+        }
+        // ----------------------------------------------------------
         
         await window.firebaseOps.deleteDoc(window.firebaseOps.doc(window.db, "students", studentToDeleteId));
         showToast("تم الحذف");
@@ -5557,6 +5579,12 @@ window.showDayDetails = (dateStr) => {
             const desc = typeof formatPlanDayDesc === 'function' ? formatPlanDayDesc(p.record?.plannedSections || []) : 'ورد اليوم';
             const statusMap = { pending: ['⏳ معلق','gray'], completed: ['✅ أنجز','green'], different: ['⚡ جزئي','amber'], absent: ['❌ غياب','red'] };
             const [statusLabel, sc] = statusMap[p.status] || ['⏳ معلق','gray'];
+            const r = p.record || {};
+            const startSu = r.plannedStartSura || r.planned_start_sura || 1;
+            const startAy = r.plannedStartAyah || r.planned_start_ayah || 1;
+            const endSu = r.plannedEndSura || r.planned_end_sura || startSu;
+            const endAy = r.plannedEndAyah || r.planned_end_ayah || 1;
+
             return `
             <div class="bg-${typeColor}-50 dark:bg-${typeColor}-900/20 border border-${typeColor}-200 dark:border-${typeColor}-700 rounded-xl p-3 mb-3">
                 <div class="flex justify-between items-center mb-1">
@@ -5565,6 +5593,10 @@ window.showDayDetails = (dateStr) => {
                 </div>
                 <p class="text-sm font-bold text-gray-700 dark:text-gray-200">${desc}</p>
                 ${p.record?.plannedStartPage ? `<p class="text-[10px] text-gray-400 mt-0.5">ص${p.record.plannedStartPage} - ${p.record.plannedEndPage}</p>` : ''}
+                
+                <button onclick="window.openWardReader('${startSu}','${startAy}','${endSu}','${endAy}')" class="mt-2 w-full py-1.5 bg-${typeColor}-600 hover:bg-${typeColor}-700 text-white rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5">
+                    <i data-lucide="book-open" class="w-3.5 h-3.5"></i> قراءة الورد
+                </button>
             </div>`;
         }).join('');
     }
