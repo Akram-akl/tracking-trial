@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="ar" dir="rtl">
 
 <head>
@@ -50,21 +50,34 @@
     <link rel="apple-touch-icon" href="./apple-touch-icon.jpg">
     <link rel="icon" type="image/jpeg" href="./apple-touch-icon.jpg">
 
-    <!-- Tailwind / Custom CSS -->
-    <script src="https://cdn.tailwindcss.com"></script>
-    <link href="./css/styles.css?v=3" rel="stylesheet">
-    <link href="https://cdnjs.cloudflare.com/ajax/libs/animate.css/4.1.1/animate.min.css" rel="stylesheet">
+    <!-- Config & Tailwind -->
+    <script src="./js/config.js?v=1"></script>
     <script>
-        tailwind.config = {
-            darkMode: 'class',
-            theme: {
-                extend: {
-                    fontFamily: {
-                        sans: ['Tajawal', 'sans-serif'],
-                    }
+        if (typeof APP_CONFIG !== 'undefined' && APP_CONFIG.themeColors) {
+            window.tailwind = { config: { theme: { extend: { colors: { emerald: APP_CONFIG.themeColors } } } } };
+        }
+    </script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        if (typeof tailwind !== 'undefined') {
+            tailwind.config = {
+                darkMode: 'class',
+                theme: { extend: { fontFamily: { sans: ['Tajawal', 'sans-serif'] }, colors: { emerald: (typeof APP_CONFIG !== 'undefined' ? APP_CONFIG.themeColors : undefined) } } }
+            };
+        }
+    </script>
+    <script>
+        window.addEventListener('DOMContentLoaded', () => {
+            if (typeof APP_CONFIG !== 'undefined') {
+                document.title = APP_CONFIG.appName;
+                document.querySelectorAll('.dynamic-app-name').forEach(el => el.textContent = APP_CONFIG.appName);
+                document.querySelectorAll('.dynamic-app-description').forEach(el => el.textContent = APP_CONFIG.appDescription);
+                if (APP_CONFIG.themeColors && APP_CONFIG.themeColors[800]) {
+                    const meta = document.querySelector('meta[name="theme-color"]');
+                    if (meta) meta.setAttribute('content', APP_CONFIG.themeColors[800]);
                 }
             }
-        }
+        });
     </script>
 
     <!-- Lucide Icons -->
@@ -110,8 +123,8 @@
                 </div>
 
                 <div class="p-6 max-h-[75vh] overflow-y-auto custom-scrollbar">
-                    <h1 class="text-xl font-black text-center mb-1 text-gray-800 dark:text-white">برنامج المتابعة</h1>
-                    <p class="text-center text-gray-500 text-xs mb-6">منصة التحفيظ والمتابعه القرآنية</p>
+                    <h1 class="text-xl font-black text-center mb-1 text-gray-800 dark:text-white dynamic-app-name">برنامج المتابعة</h1>
+                    <p class="text-center text-gray-500 text-xs mb-6 dynamic-app-description">منصة التحفيظ والمتابعه القرآنية</p>
 
                     <!-- Step 1: Role Selection -->
                     <div id="auth-options-panel" class="space-y-4">
@@ -384,7 +397,7 @@
                 <div class="flex items-center gap-3">
                     <i data-lucide="award" class="w-8 h-8 text-yellow-300"></i>
                     <div>
-                        <h1 class="font-bold text-lg leading-tight">برنامج المتابعة</h1>
+                        <h1 class="font-bold text-lg leading-tight dynamic-app-name">برنامج المتابعة</h1>
                         <p class="text-emerald-200 text-xs" id="current-mode-label">وضع الطالب</p>
                     </div>
                 </div>

@@ -5,8 +5,8 @@
 // existing app.js code works with minimal changes.
 // =====================================================
 
-const SUPABASE_URL = 'https://xxcqfqedyymuafqvdtgg.supabase.co';
-const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inh4Y3FmcWVkeXltdWFmcXZkdGdnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Njk2MDE1MTAsImV4cCI6MjA4NTE3NzUxMH0.t5NArVykZRw5vX-e_Sr-eHzIuwlV6fch85APqL0nZi0';
+const SUPABASE_URL = APP_CONFIG.supabaseUrl;
+const SUPABASE_ANON_KEY = APP_CONFIG.supabaseAnonKey;
 
 // Initialize Supabase Client
 const supabaseClient = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
