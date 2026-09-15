@@ -14674,8 +14674,8 @@ async function fetchAdminDashboardData(forceRefresh = false) {
         const [studentsSnap, teachersSnap, scoresSnap, activitySnap] = await Promise.all([
             fOps.getDocs(fOps.collection(window.db, 'students')),
             fOps.getDocs(fOps.collection(window.db, 'teachers')),
-            fOps.getDocs(fOps.collection(window.db, 'scores')),
-            fOps.getDocs(fOps.collection(window.db, 'activity_days'))
+            fOps.getDocs(fOps.collection(window.db, 'scores')).catch(() => []),
+            fOps.getDocs(fOps.collection(window.db, 'activity_days')).catch(() => [])
         ]);
 
         const allStudents = [];
@@ -14691,7 +14691,12 @@ async function fetchAdminDashboardData(forceRefresh = false) {
         activitySnap.forEach(d => { const data = d.data(); data.id = d.id; allActivityDays.push(data); });
 
         // Filter scores by date range
-        const filteredScores = allScores.filter(s => s.date && s.date >= start && s.date <= end);
+        // [FIX] Use only the first 10 chars so ISO timestamps ("2026-09-12T00:00:00Z") compare correctly
+        const filteredScores = allScores.filter(s => {
+            if (!s.date) return false;
+            const d = String(s.date).substring(0, 10);
+            return d >= start && d <= end;
+        });
 
         // Build per-level stats
         const levelKeys = Object.keys(LEVELS).filter(k => !LEVELS[k].hidden);
@@ -14823,6 +14828,10 @@ async function fetchAdminDashboardData(forceRefresh = false) {
         }
 
         state.adminData = { levelStats, allStudents, allTeachers, allScores: filteredScores, start, end };
+        // Multi-project injection hook (used by multi-project config.js setups)
+        if (typeof window._injectOtherProjectsData === 'function') {
+            state.adminData = await window._injectOtherProjectsData(state.adminData);
+        }
         return state.adminData;
     } catch (err) {
         console.error('Admin fetch error:', err);
